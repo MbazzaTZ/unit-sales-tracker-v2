@@ -12,7 +12,8 @@ import {
   CheckSquare,
   LogOut,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  X
 } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -24,6 +25,8 @@ interface SidebarProps {
   role: UserRole;
   activeTab: string;
   onTabChange: (tab: string) => void;
+  isMobileOpen?: boolean;
+  onMobileClose?: () => void;
 }
 
 const adminMenuItems = [
@@ -65,10 +68,15 @@ const managerMenuItems = [
   { id: 'profile', label: 'Profile', icon: Settings },
 ];
 
-export function Sidebar({ role, activeTab, onTabChange }: SidebarProps) {
+export function Sidebar({ role, activeTab, onTabChange, isMobileOpen, onMobileClose }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+  
+  const handleTabChange = (tab: string) => {
+    onTabChange(tab);
+    if (onMobileClose) onMobileClose();
+  };
   
   const menuItems = role === 'admin' 
     ? adminMenuItems 
@@ -99,10 +107,24 @@ export function Sidebar({ role, activeTab, onTabChange }: SidebarProps) {
   }
 
   return (
-    <div className={cn(
-      'h-screen bg-sidebar border-r border-sidebar-border flex flex-col transition-all duration-300',
-      collapsed ? 'w-16' : 'w-64'
-    )}>
+    <>
+      {/* Mobile Overlay */}
+      {isMobileOpen && (
+        <div 
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden" 
+          onClick={onMobileClose}
+        />
+      )}
+      
+      {/* Sidebar */}
+      <div className={cn(
+        'h-screen bg-sidebar border-r border-sidebar-border flex flex-col transition-all duration-300',
+        'fixed lg:relative z-50',
+        collapsed ? 'w-16' : 'w-64',
+        // Mobile: slide in from left
+        'lg:translate-x-0',
+        isMobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+      )}>
       {/* Header */}
       <div className="p-4 border-b border-sidebar-border flex items-center justify-between">
         {!collapsed && (
@@ -116,12 +138,24 @@ export function Sidebar({ role, activeTab, onTabChange }: SidebarProps) {
             </div>
           </div>
         )}
-        <button 
-          onClick={() => setCollapsed(!collapsed)}
-          className="p-1.5 rounded-lg hover:bg-sidebar-accent text-sidebar-foreground transition-colors"
-        >
-          {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-        </button>
+        <div className="flex items-center gap-1">
+          {/* Mobile Close Button */}
+          {onMobileClose && (
+            <button 
+              onClick={onMobileClose}
+              className="lg:hidden p-1.5 rounded-lg hover:bg-sidebar-accent text-sidebar-foreground transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+          {/* Desktop Collapse Button */}
+          <button 
+            onClick={() => setCollapsed(!collapsed)}
+            className="hidden lg:block p-1.5 rounded-lg hover:bg-sidebar-accent text-sidebar-foreground transition-colors"
+          >
+            {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+          </button>
+        </div>
       </div>
 
       {/* Navigation */}
@@ -129,7 +163,7 @@ export function Sidebar({ role, activeTab, onTabChange }: SidebarProps) {
         {menuItems.map((item) => (
           <button
             key={item.id}
-            onClick={() => onTabChange(item.id)}
+            onClick={() => handleTabChange(item.id)}
             className={cn(
               'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200',
               activeTab === item.id 
@@ -156,5 +190,6 @@ export function Sidebar({ role, activeTab, onTabChange }: SidebarProps) {
         </button>
       </div>
     </div>
+    </>
   );
 }

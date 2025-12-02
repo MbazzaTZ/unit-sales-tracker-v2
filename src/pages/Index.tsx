@@ -31,6 +31,7 @@ const Index = () => {
   const { user, userRole, profile, loading } = useAuth();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState(userRole === 'dsr' ? 'dashboard' : 'general');
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -147,11 +148,17 @@ const Index = () => {
       <Sidebar 
         role={userRole} 
         activeTab={activeTab} 
-        onTabChange={setActiveTab} 
+        onTabChange={setActiveTab}
+        isMobileOpen={isMobileMenuOpen}
+        onMobileClose={() => setIsMobileMenuOpen(false)}
       />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <Header role={userRole} userName={profile?.full_name} />
-        <main className="flex-1 overflow-y-auto">
+        <Header 
+          role={userRole} 
+          userName={profile?.full_name}
+          onMobileMenuToggle={() => setIsMobileMenuOpen(true)}
+        />
+        <main className="flex-1 overflow-y-auto p-4 lg:p-6">
           {renderContent()}
         </main>
       </div>

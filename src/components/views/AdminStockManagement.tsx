@@ -195,6 +195,28 @@ export function AdminStockManagement() {
       const stockItems = items.map(item => ({
         stock_id: item.stock_id,
         type: item.type,
+        batch_id: batchId,
+        status: 'available'
+      }));
+
+      const { error } = await supabase
+        .from('stock')
+        .insert(stockItems);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['stock'] });
+      toast({ title: 'Stock uploaded successfully', description: `${csvData.length} items added` });
+      setCsvData([]);
+      setBatchNumber('');
+      setIsBatchOpen(false);
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Error uploading stock', description: error.message, variant: 'destructive' });
+    }
+  });
+
   const handleManualSubmit = async () => {
     if (!manualStockId || !manualType) {
       toast({ title: 'Please fill required fields (Stock Type and Stock ID)', variant: 'destructive' });
@@ -218,24 +240,6 @@ export function AdminStockManagement() {
     if (subTerritory) stockData.sub_territory = subTerritory;
     
     addStockMutation.mutate(stockData);
-  };  queryClient.invalidateQueries({ queryKey: ['stock'] });
-      toast({ title: 'Stock uploaded successfully', description: `${csvData.length} items added` });
-      setCsvData([]);
-      setBatchNumber('');
-      setIsBatchOpen(false);
-    },
-    onError: (error: Error) => {
-      toast({ title: 'Error uploading stock', description: error.message, variant: 'destructive' });
-    }
-  });
-
-  const handleManualSubmit = async () => {
-    if (!manualStockId || !manualType) {
-      toast({ title: 'Please fill all fields', variant: 'destructive' });
-      return;
-    }
-    
-    addStockMutation.mutate({ stockId: manualStockId, type: manualType });
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -280,6 +284,46 @@ export function AdminStockManagement() {
       }
     };
     
+    reader.readAsText(file);
+  };
+
+  const handleBatchUpload = async () => {
+    if (!batchNumber) {
+      toast({ title: 'Please enter a batch number', variant: 'destructive' });
+      return;
+    }
+
+    try {
+      const batch = await createBatchMutation.mutateAsync(batchNumber);
+      await bulkAddStockMutation.mutateAsync({ items: csvData, batchId: batch.id });
+    } catch (error) {
+      // Error handling is done in mutations
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="glass rounded-xl p-6 border border-border/50">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+              <Package className="h-7 w-7 text-primary" />
+              Stock Management
+            </h1>
+            <p className="text-muted-foreground mt-1">Manage inventory and stock assignments</p>
+          </div>
+        </div>
+
+        <div className="flex gap-3">
+          {/* Manual Add Dialog */}
+          <Dialog open={isManualOpen} onOpenChange={setIsManualOpen}>
+            <DialogTrigger asChild>
+              <Button className="gap-2">
+                <Plus className="h-4 w-4" />
+                Add Manually
+              </Button>
+            </DialogTrigger>
             <DialogContent className="glass border-border/50 max-w-2xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Add Single Stock Item</DialogTitle>
@@ -378,40 +422,6 @@ export function AdminStockManagement() {
                   </div>
                 </div>
 
-                <Button 
-                  className="w-full" 
-                  onClick={handleManualSubmit}
-                  disabled={addStockMutation.isPending}
-                >
-                  {addStockMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Add Stock
-                </Button>
-              </div>
-            </DialogContent>iption>Enter stock details manually</DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 pt-4">
-                <div className="space-y-2">
-                  <Label>Stock ID</Label>
-                  <Input
-                    placeholder="e.g., STK-1001"
-                    value={manualStockId}
-                    onChange={(e) => setManualStockId(e.target.value)}
-                    className="bg-secondary/50"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Type</Label>
-                  <Select value={manualType} onValueChange={setManualType}>
-                    <SelectTrigger className="bg-secondary/50">
-                      <SelectValue placeholder="Select type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {STOCK_TYPES.map(type => (
-                        <SelectItem key={type} value={type}>{type}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
                 <Button 
                   className="w-full" 
                   onClick={handleManualSubmit}
