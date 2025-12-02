@@ -6,16 +6,27 @@
 CREATE TABLE IF NOT EXISTS public.managers (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE UNIQUE,
-  location TEXT,
+  manager_type TEXT NOT NULL CHECK (manager_type IN ('RSM', 'TSM')),
+  region_id UUID REFERENCES public.regions(id) ON DELETE SET NULL,
+  territory TEXT,
   created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now()
+  updated_at TIMESTAMPTZ DEFAULT now(),
+  CONSTRAINT manager_assignment_check CHECK (
+    (manager_type = 'RSM' AND region_id IS NOT NULL AND territory IS NULL) OR
+    (manager_type = 'TSM' AND territory IS NOT NULL AND region_id IS NULL)
+  )
 );
 
--- Create index for faster queries
+-- Create indexes for faster queries
 CREATE INDEX IF NOT EXISTS idx_managers_user_id ON public.managers(user_id);
+CREATE INDEX IF NOT EXISTS idx_managers_region_id ON public.managers(region_id);
+CREATE INDEX IF NOT EXISTS idx_managers_type ON public.managers(manager_type);
 
--- Add comment
+-- Add comments
 COMMENT ON TABLE public.managers IS 'Managers with access to dashboard, stock overview, and sales team performance';
+COMMENT ON COLUMN public.managers.manager_type IS 'RSM (Regional Sales Manager) or TSM (Territory Sales Manager)';
+COMMENT ON COLUMN public.managers.region_id IS 'For RSM: assigned region';
+COMMENT ON COLUMN public.managers.territory IS 'For TSM: assigned territory';
 
 -- Enable RLS
 ALTER TABLE public.managers ENABLE ROW LEVEL SECURITY;

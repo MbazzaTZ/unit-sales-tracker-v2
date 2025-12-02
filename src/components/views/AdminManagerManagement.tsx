@@ -14,6 +14,13 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   Table,
   TableBody,
   TableCell,
@@ -22,7 +29,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { UserPlus, Users, Loader2, Mail, Phone, MapPin, Trash2 } from 'lucide-react';
+import { UserPlus, Users, Loader2, Mail, Phone, MapPin, Trash2, Building2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export function AdminManagerManagement() {
@@ -31,10 +38,53 @@ export function AdminManagerManagement() {
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [location, setLocation] = useState('');
+  const [managerType, setManagerType] = useState<'RSM' | 'TSM'>('RSM');
+  const [selectedRegion, setSelectedRegion] = useState('');
+  const [selectedTerritory, setSelectedTerritory] = useState('');
   
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  // Fetch regions
+  const { data: regions = [] } = useQuery({
+    queryKey: ['regions'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('regions')
+        .select('*')
+        .order('name');
+      if (error) throw error;
+      return data;
+    }
+  });
+
+  // Fetch territories (from regions table or a territories table if you have one)
+  const { data: territories = [] } = useQuery({
+    queryKey: ['territories'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('regions')
+        .select('id, name, territories')
+        .order('name');
+      if (error) throw error;
+      
+      // Flatten territories from all regions
+      const allTerritories: any[] = [];
+      data?.forEach(region => {
+        if (region.territories && Array.isArray(region.territories)) {
+          region.territories.forEach((territory: string) => {
+            allTerritories.push({
+              id: `${region.id}-${territory}`,
+              name: territory,
+              region_id: region.id,
+              region_name: region.name
+            });
+          });
+        }
+      });
+      return allTerritories;
+    }
+  });
 
   // Fetch managers
   const { data: managers = [], isLoading } = useQuery({
@@ -50,6 +100,11 @@ export function AdminManagerManagement() {
             email,
             phone_number,
             created_at
+          ),
+          region:region_id (
+            id,
+            name,
+            code
           )
         `)
         .order('created_at', { ascending: false });
@@ -66,7 +121,9 @@ export function AdminManagerManagement() {
       password: string;
       fullName: string;
       phoneNumber?: string;
-      location?: string;
+      managerType: 'RSM' | 'TSM';
+      regionId?: string;
+      territory?: string;
     }) => {
       // 1. Create auth user
       const { data: authData, error: authError } = await supabase.auth.signUp({
@@ -99,7 +156,9 @@ export function AdminManagerManagement() {
         .from('managers')
         .insert({
           user_id: authData.user.id,
-          location: managerData.location || null,
+          manager_type: managerData.managerType,
+          region_id: managerData.managerType === 'RSM' ? managerData.regionId : null,
+          territory: managerData.managerType === 'TSM' ? managerData.territory : null,
         });
 
       if (managerError) throw managerError;
@@ -126,7 +185,9 @@ export function AdminManagerManagement() {
       setPassword('');
       setFullName('');
       setPhoneNumber('');
-      setLocation('');
+      setManagerType('RSM');
+      setSelectedRegion('');
+      setSelectedTerritory('');
       setIsAddOpen(false);
     },
     onError: (error: Error) => {
@@ -187,6 +248,24 @@ export function AdminManagerManagement() {
       return;
     }
 
+    if (managerType === 'RSM' && !selectedRegion) {
+      toast({
+        variant: 'destructive',
+        title: 'Missing region',
+        description: 'Please select a region for RSM.',
+      });
+      return;
+    }
+
+    if (managerType === 'TSM' && !selectedTerritory) {
+      toast({
+        variant: 'destructive',
+        title: 'Missing territory',
+        description: 'Please select a territory for TSM.',
+      });
+      return;
+    }
+
     if (password.length < 6) {
       toast({
         variant: 'destructive',
@@ -201,7 +280,9 @@ export function AdminManagerManagement() {
       password,
       fullName,
       phoneNumber,
-      location,
+      managerType,
+      regionId: selectedRegion,
+      territory: selectedTerritory,
     });
   };
 
@@ -276,14 +357,53 @@ export function AdminManagerManagement() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Location</Label>
-                  <Input
-                    placeholder="e.g., Dar es Salaam"
-                    value={location}
-                    onChange={(e) => setLocation(e.target.value)}
-                    className="bg-secondary/50"
-                  />
+                  <Label>Manager Type <span className="text-destructive">*</span></Label>
+                  <Select value={managerType} onValueChange={(value: 'RSM' | 'TSM') => setManagerType(value)}>
+                    <SelectTrigger className="bg-secondary/50">
+                      <SelectValue placeholder="Select manager type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="RSM">RSM (Regional Sales Manager)</SelectItem>
+                      <SelectItem value="TSM">TSM (Territory Sales Manager)</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
+
+                {managerType === 'RSM' && (
+                  <div className="space-y-2">
+                    <Label>Assign Region <span className="text-destructive">*</span></Label>
+                    <Select value={selectedRegion} onValueChange={setSelectedRegion}>
+                      <SelectTrigger className="bg-secondary/50">
+                        <SelectValue placeholder="Select region" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {regions.map((region: any) => (
+                          <SelectItem key={region.id} value={region.id}>
+                            {region.name} ({region.code})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                {managerType === 'TSM' && (
+                  <div className="space-y-2">
+                    <Label>Assign Territory <span className="text-destructive">*</span></Label>
+                    <Select value={selectedTerritory} onValueChange={setSelectedTerritory}>
+                      <SelectTrigger className="bg-secondary/50">
+                        <SelectValue placeholder="Select territory" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {territories.map((territory: any) => (
+                          <SelectItem key={territory.id} value={territory.name}>
+                            {territory.name} ({territory.region_name})
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
 
                 <Button
                   className="w-full"
@@ -326,7 +446,8 @@ export function AdminManagerManagement() {
                   <TableHead className="text-muted-foreground">Name</TableHead>
                   <TableHead className="text-muted-foreground hidden md:table-cell">Email</TableHead>
                   <TableHead className="text-muted-foreground hidden lg:table-cell">Phone</TableHead>
-                  <TableHead className="text-muted-foreground hidden lg:table-cell">Location</TableHead>
+                  <TableHead className="text-muted-foreground">Type</TableHead>
+                  <TableHead className="text-muted-foreground hidden xl:table-cell">Assignment</TableHead>
                   <TableHead className="text-muted-foreground">Status</TableHead>
                   <TableHead className="text-muted-foreground">Actions</TableHead>
                 </TableRow>
@@ -356,10 +477,22 @@ export function AdminManagerManagement() {
                         {manager.profiles?.phone_number || 'N/A'}
                       </div>
                     </TableCell>
-                    <TableCell className="hidden lg:table-cell">
+                    <TableCell>
+                      <Badge variant="outline" className={cn(
+                        manager.manager_type === 'RSM' 
+                          ? 'bg-blue-500/10 text-blue-600 border-blue-500/20'
+                          : 'bg-purple-500/10 text-purple-600 border-purple-500/20'
+                      )}>
+                        {manager.manager_type || 'N/A'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="hidden xl:table-cell">
                       <div className="flex items-center gap-2 text-muted-foreground">
-                        <MapPin className="h-4 w-4" />
-                        {manager.location || 'N/A'}
+                        <Building2 className="h-4 w-4" />
+                        {manager.manager_type === 'RSM' 
+                          ? (manager.region?.name || 'N/A')
+                          : (manager.territory || 'N/A')
+                        }
                       </div>
                     </TableCell>
                     <TableCell>
