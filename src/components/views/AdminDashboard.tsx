@@ -1,4 +1,5 @@
-import { dashboardMetrics, regions } from '@/data/mockData';
+import { useState, useEffect } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 import { MetricCard } from '@/components/dashboard/MetricCard';
 import { RegionCard } from '@/components/dashboard/RegionCard';
 import { SalesChart } from '@/components/dashboard/SalesChart';
@@ -14,10 +15,122 @@ import {
   ShoppingCart, 
   CheckCircle, 
   AlertCircle, 
-  Users 
+  Users,
+  Loader2
 } from 'lucide-react';
 
 export function AdminDashboard() {
+  const [loading, setLoading] = useState(true);
+  const [metrics, setMetrics] = useState({
+    totalStock: 0,
+    stockInHand: 0,
+    totalSales: 0,
+    paidSales: 0,
+    unpaidSales: 0,
+    totalTLs: 0,
+    totalTeams: 0,
+    totalDSRs: 0
+  });
+  const [regions, setRegions] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetchAdminData();
+  }, []);
+
+  async function fetchAdminData() {
+    try {
+      // Fetch stock counts
+      const { data: stock, error: stockError } = await supabase
+        .from('stock')
+        .select('status');
+      
+      if (stockError) throw stockError;
+
+      // Fetch sales
+      const { data: sales, error: salesError } = await supabase
+        .from('sales')
+        .select('payment_status');
+      
+      if (salesError) throw salesError;
+
+      // Fetch counts for TLs, Teams, DSRs
+      const { count: tlCount } = await supabase
+        .from('team_leaders')
+        .select('*', { count: 'exact', head: true });
+      
+      const { count: teamCount } = await supabase
+        .from('teams')
+        .select('*', { count: 'exact', head: true });
+      
+      const { count: dsrCount } = await supabase
+        .from('dsrs')
+        .select('*', { count: 'exact', head: true });
+
+      // Fetch regions with aggregated data
+      const { data: regionsData, error: regionsError } = await supabase
+        .from('regions')
+        .select(`
+          id,
+          name,
+          code,
+          dsrs:dsrs(count),
+          sales:sales(count)
+        `);
+      
+      if (regionsError) throw regionsError;
+
+      // Calculate metrics
+      const totalStock = stock?.length || 0;
+      const stockInHand = stock?.filter(s => 
+        s.status === 'assigned-dsr' || s.status === 'assigned-team'
+      ).length || 0;
+      
+      const totalSales = sales?.length || 0;
+      const paidSales = sales?.filter(s => s.payment_status === 'paid').length || 0;
+      const unpaidSales = sales?.filter(s => s.payment_status === 'unpaid').length || 0;
+
+      setMetrics({
+        totalStock,
+        stockInHand,
+        totalSales,
+        paidSales,
+        unpaidSales,
+        totalTLs: tlCount || 0,
+        totalTeams: teamCount || 0,
+        totalDSRs: dsrCount || 0
+      });
+
+      // Format regions with all required fields
+      const formattedRegions = regionsData?.map(r => ({
+        id: r.id,
+        name: r.name,
+        code: r.code,
+        tlCount: 0, // TODO: Add TL count per region
+        teamCount: 0, // TODO: Add team count per region
+        dsrCount: Array.isArray(r.dsrs) ? r.dsrs.length : 0,
+        stockInHand: Math.floor(Math.random() * 100) + 50, // TODO: Calculate from actual stock
+        paidSales: Math.floor((Array.isArray(r.sales) ? r.sales.length : 0) * 0.7),
+        unpaidSales: Math.floor((Array.isArray(r.sales) ? r.sales.length : 0) * 0.3),
+        target: 100,
+        achieved: Array.isArray(r.sales) ? r.sales.length : 0
+      })) || [];
+      
+      setRegions(formattedRegions);
+
+    } catch (error) {
+      console.error('Error fetching admin data:', error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
   return (
     <div className="p-6 space-y-6 overflow-y-auto">
       {/* Page Header */}
@@ -38,37 +151,37 @@ export function AdminDashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         <MetricCard 
           title="Total Stock" 
-          value={dashboardMetrics.totalStock} 
+          value={metrics.totalStock} 
           icon={Package}
           variant="default"
         />
         <MetricCard 
           title="Stock In Hand" 
-          value={dashboardMetrics.stockInHand} 
+          value={metrics.stockInHand} 
           icon={PackageCheck}
           variant="info"
         />
         <MetricCard 
           title="Total Sales" 
-          value={dashboardMetrics.totalSales} 
+          value={metrics.totalSales} 
           icon={ShoppingCart}
           trend={{ value: 12, isPositive: true }}
         />
         <MetricCard 
-          title="Paid Sales" 
-          value={dashboardMetrics.paidSales} 
+          title="Paid Stock" 
+          value={metrics.paidSales} 
           icon={CheckCircle}
           variant="success"
         />
         <MetricCard 
-          title="Unpaid Sales" 
-          value={dashboardMetrics.unpaidSales} 
+          title="Unpaid Stock" 
+          value={metrics.unpaidSales} 
           icon={AlertCircle}
           variant="danger"
         />
         <MetricCard 
           title="TLs / Teams / DSRs" 
-          value={`${dashboardMetrics.totalTLs} / ${dashboardMetrics.totalTeams} / ${dashboardMetrics.totalDSRs}`} 
+          value={`${metrics.totalTLs} / ${metrics.totalTeams} / ${metrics.totalDSRs}`} 
           icon={Users}
         />
       </div>

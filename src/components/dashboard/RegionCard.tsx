@@ -53,11 +53,11 @@ export function RegionCard({ region, className }: RegionCardProps) {
           <span className="font-medium text-foreground">{region.stockInHand.toLocaleString()}</span>
         </div>
         <div className="flex justify-between text-sm">
-          <span className="text-muted-foreground">Paid Sales</span>
+          <span className="text-muted-foreground">Paid Stock</span>
           <span className="font-medium text-success">{region.paidSales.toLocaleString()}</span>
         </div>
         <div className="flex justify-between text-sm">
-          <span className="text-muted-foreground">Unpaid Sales</span>
+          <span className="text-muted-foreground">Unpaid Stock</span>
           <span className="font-medium text-destructive">{region.unpaidSales.toLocaleString()}</span>
         </div>
       </div>

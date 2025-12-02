@@ -15,7 +15,10 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { UserRole } from '@/types/tsm';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 interface SidebarProps {
   role: UserRole;
@@ -24,40 +27,76 @@ interface SidebarProps {
 }
 
 const adminMenuItems = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'general', label: 'General Overview', icon: BarChart3 },
+  { id: 'dashboard', label: 'Admin Dashboard', icon: LayoutDashboard },
+  { id: 'regions', label: 'Regions & Territories', icon: MapPin },
   { id: 'stock', label: 'Stock Management', icon: Package },
   { id: 'assign', label: 'Assign Stock', icon: Target },
   { id: 'tls', label: 'TL Management', icon: UserCheck },
   { id: 'approvals', label: 'Approvals', icon: CheckSquare },
   { id: 'reports', label: 'Reports', icon: BarChart3 },
-  { id: 'settings', label: 'Settings', icon: Settings },
+  { id: 'profile', label: 'Profile', icon: Settings },
 ];
 
 const tlMenuItems = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'general', label: 'General Overview', icon: BarChart3 },
+  { id: 'dashboard', label: 'TL Dashboard', icon: LayoutDashboard },
   { id: 'teams', label: 'Teams', icon: Users },
   { id: 'dsrs', label: 'DSRs', icon: UserCheck },
   { id: 'stock', label: 'Stock', icon: Package },
   { id: 'verification', label: 'Sales Verification', icon: CheckSquare },
   { id: 'reports', label: 'Reports', icon: BarChart3 },
+  { id: 'profile', label: 'Profile', icon: Settings },
 ];
 
 const dsrMenuItems = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'dashboard', label: 'DSR Dashboard', icon: LayoutDashboard },
   { id: 'stock', label: 'My Stock', icon: Package },
   { id: 'add-sale', label: 'Add Sale', icon: ShoppingCart },
   { id: 'my-sales', label: 'My Sales', icon: BarChart3 },
   { id: 'commission', label: 'Commission', icon: Target },
+  { id: 'profile', label: 'Profile', icon: Settings },
+];
+
+const managerMenuItems = [
+  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'stock', label: 'Stock Overview', icon: Package },
+  { id: 'sales-team', label: 'Sales Team', icon: Users },
+  { id: 'profile', label: 'Profile', icon: Settings },
 ];
 
 export function Sidebar({ role, activeTab, onTabChange }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const navigate = useNavigate();
+  const { toast } = useToast();
   
   const menuItems = role === 'admin' 
     ? adminMenuItems 
     : role === 'tl' 
       ? tlMenuItems 
-      : dsrMenuItems;
+      : role === 'manager'
+        ? managerMenuItems
+        : dsrMenuItems;
+
+  async function handleLogout() {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      
+      toast({
+        title: 'Logged out successfully',
+        description: 'See you next time!',
+      });
+      
+      navigate('/auth');
+    } catch (error: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: error.message || 'Failed to logout',
+      });
+    }
+  }
 
   return (
     <div className={cn(
@@ -108,7 +147,10 @@ export function Sidebar({ role, activeTab, onTabChange }: SidebarProps) {
 
       {/* Footer */}
       <div className="p-3 border-t border-sidebar-border">
-        <button className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sidebar-foreground hover:bg-sidebar-accent/50 transition-colors">
+        <button 
+          onClick={handleLogout}
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sidebar-foreground hover:bg-sidebar-accent/50 transition-colors"
+        >
           <LogOut className="h-5 w-5" />
           {!collapsed && <span className="text-sm font-medium">Logout</span>}
         </button>

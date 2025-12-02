@@ -95,11 +95,20 @@ export function AdminTLManagement() {
       if (authError) throw authError;
       if (!authData.user) throw new Error('Failed to create user');
       
-      // Update role to TL
+      // Delete default DSR role
+      await supabase
+        .from('user_roles')
+        .delete()
+        .eq('user_id', authData.user.id)
+        .eq('role', 'dsr');
+      
+      // Insert TL role
       const { error: roleError } = await supabase
         .from('user_roles')
-        .update({ role: 'tl' })
-        .eq('user_id', authData.user.id);
+        .insert({
+          user_id: authData.user.id,
+          role: 'tl'
+        });
       
       if (roleError) throw roleError;
       

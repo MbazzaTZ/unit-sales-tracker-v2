@@ -54,15 +54,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const fetchUserData = async (userId: string) => {
     try {
-      // Fetch role
-      const { data: roleData } = await supabase
+      // Fetch all roles for the user
+      const { data: rolesData } = await supabase
         .from('user_roles')
         .select('role')
-        .eq('user_id', userId)
-        .maybeSingle();
+        .eq('user_id', userId);
       
-      if (roleData) {
-        setUserRole(roleData.role as UserRole);
+      // Priority: admin > tl > dsr
+      if (rolesData && rolesData.length > 0) {
+        const roles = rolesData.map(r => r.role);
+        if (roles.includes('admin')) {
+          setUserRole('admin');
+        } else if (roles.includes('tl')) {
+          setUserRole('tl');
+        } else if (roles.includes('dsr')) {
+          setUserRole('dsr');
+        }
       }
 
       // Fetch profile

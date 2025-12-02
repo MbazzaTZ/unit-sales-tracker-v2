@@ -40,7 +40,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 
-const STOCK_TYPES = ['DSTV HD', 'DSTV SD', 'DSTV Explora', 'DSTV Streama', 'GOtv'];
+const STOCK_TYPES = ['Full Set (FS)', 'Decoder Only (DO)', 'Digital Virtual Stock (DVS)'];
 
 const statusConfig: Record<string, { label: string; className: string }> = {
   'unassigned': { label: 'Unassigned', className: 'bg-muted text-muted-foreground' },
@@ -56,6 +56,12 @@ export function AdminStockManagement() {
   const [isBatchOpen, setIsBatchOpen] = useState(false);
   const [manualStockId, setManualStockId] = useState('');
   const [manualType, setManualType] = useState('');
+  const [smartcardNumber, setSmartcardNumber] = useState('');
+  const [serialNumber, setSerialNumber] = useState('');
+  const [selectedTL, setSelectedTL] = useState('');
+  const [selectedRegion, setSelectedRegion] = useState('');
+  const [territory, setTerritory] = useState('');
+  const [subTerritory, setSubTerritory] = useState('');
   const [batchNumber, setBatchNumber] = useState('');
   const [csvData, setCsvData] = useState<{ stock_id: string; type: string }[]>([]);
   const [isProcessingCsv, setIsProcessingCsv] = useState(false);
@@ -95,6 +101,38 @@ export function AdminStockManagement() {
     }
   });
 
+  // Fetch team leaders
+  const { data: teamLeaders = [] } = useQuery({
+    queryKey: ['team_leaders'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('team_leaders')
+        .select(`
+          id,
+          user_id,
+          profiles:user_id(full_name)
+        `)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data;
+    }
+  });
+
+  // Fetch regions
+  const { data: regions = [] } = useQuery({
+    queryKey: ['regions'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('regions')
+        .select('*')
+        .order('name');
+      
+      if (error) throw error;
+      return data;
+    }
+  });
+
   // Create batch mutation
   const createBatchMutation = useMutation({
     mutationFn: async (batchNum: string) => {
@@ -114,18 +152,36 @@ export function AdminStockManagement() {
 
   // Add single stock mutation
   const addStockMutation = useMutation({
-    mutationFn: async ({ stockId, type, batchId }: { stockId: string; type: string; batchId?: string }) => {
+    mutationFn: async (stockData: { 
+      stock_id: string; 
+      type: string; 
+      smartcard_number?: string;
+      serial_number?: string;
+      assigned_to_tl?: string;
+      region_id?: string;
+      territory?: string;
+      sub_territory?: string;
+      batch_id?: string;
+      status?: string;
+    }) => {
       const { error } = await supabase
         .from('stock')
-        .insert({ stock_id: stockId, type, batch_id: batchId });
+        .insert(stockData);
       
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['stock'] });
       toast({ title: 'Stock added successfully' });
+      // Reset form
       setManualStockId('');
       setManualType('');
+      setSmartcardNumber('');
+      setSerialNumber('');
+      setSelectedTL('');
+      setSelectedRegion('');
+      setTerritory('');
+      setSubTerritory('');
       setIsManualOpen(false);
     },
     onError: (error: Error) => {
@@ -139,14 +195,30 @@ export function AdminStockManagement() {
       const stockItems = items.map(item => ({
         stock_id: item.stock_id,
         type: item.type,
-        batch_id: batchId
-      }));
-      
-      const { error } = await supabase.from('stock').insert(stockItems);
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['stock'] });
+  const handleManualSubmit = async () => {
+    if (!manualStockId || !manualType) {
+      toast({ title: 'Please fill required fields (Stock Type and Stock ID)', variant: 'destructive' });
+      return;
+    }
+    
+    const stockData: any = {
+      stock_id: manualStockId,
+      type: manualType,
+    };
+
+    // Add optional fields
+    if (smartcardNumber) stockData.smartcard_number = smartcardNumber;
+    if (serialNumber) stockData.serial_number = serialNumber;
+    if (selectedTL) {
+      stockData.assigned_to_tl = selectedTL;
+      stockData.status = 'assigned-tl';
+    }
+    if (selectedRegion) stockData.region_id = selectedRegion;
+    if (territory) stockData.territory = territory;
+    if (subTerritory) stockData.sub_territory = subTerritory;
+    
+    addStockMutation.mutate(stockData);
+  };  queryClient.invalidateQueries({ queryKey: ['stock'] });
       toast({ title: 'Stock uploaded successfully', description: `${csvData.length} items added` });
       setCsvData([]);
       setBatchNumber('');
@@ -208,44 +280,114 @@ export function AdminStockManagement() {
       }
     };
     
-    reader.readAsText(file);
-  };
-
-  const handleBatchUpload = async () => {
-    if (!batchNumber || csvData.length === 0) {
-      toast({ title: 'Please provide batch number and upload CSV', variant: 'destructive' });
-      return;
-    }
-    
-    try {
-      const batch = await createBatchMutation.mutateAsync(batchNumber);
-      await bulkAddStockMutation.mutateAsync({ items: csvData, batchId: batch.id });
-    } catch (error) {
-      console.error('Batch upload error:', error);
-    }
-  };
-
-  return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Stock Management</h1>
-          <p className="text-muted-foreground">Upload and manage stock inventory</p>
-        </div>
-        
-        <div className="flex gap-3">
-          {/* Manual Entry Dialog */}
-          <Dialog open={isManualOpen} onOpenChange={setIsManualOpen}>
-            <DialogTrigger asChild>
-              <Button variant="outline" className="gap-2">
-                <Plus className="h-4 w-4" />
-                Add Single
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="glass border-border/50">
+            <DialogContent className="glass border-border/50 max-w-2xl max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Add Single Stock Item</DialogTitle>
                 <DialogDescription>Enter stock details manually</DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 pt-4">
+                {/* Required Fields */}
+                <div className="space-y-2">
+                  <Label>Stock Type <span className="text-destructive">*</span></Label>
+                  <Select value={manualType} onValueChange={setManualType}>
+                    <SelectTrigger className="bg-secondary/50">
+                      <SelectValue placeholder="Select stock type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {STOCK_TYPES.map(type => (
+                        <SelectItem key={type} value={type}>{type}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Smart Card Number</Label>
+                    <Input
+                      placeholder="e.g., SC-123456"
+                      value={smartcardNumber}
+                      onChange={(e) => setSmartcardNumber(e.target.value)}
+                      className="bg-secondary/50"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Serial Number <span className="text-destructive">*</span></Label>
+                    <Input
+                      placeholder="e.g., SN-789012"
+                      value={manualStockId}
+                      onChange={(e) => setManualStockId(e.target.value)}
+                      className="bg-secondary/50"
+                    />
+                  </div>
+                </div>
+
+                {/* Assignment Fields */}
+                <div className="space-y-2">
+                  <Label>Assign TL (Optional)</Label>
+                  <Select value={selectedTL} onValueChange={setSelectedTL}>
+                    <SelectTrigger className="bg-secondary/50">
+                      <SelectValue placeholder="Select Team Leader" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">None</SelectItem>
+                      {teamLeaders.map((tl: any) => (
+                        <SelectItem key={tl.id} value={tl.id}>
+                          {tl.profiles?.full_name || 'Unknown TL'}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Assign Regional</Label>
+                  <Select value={selectedRegion} onValueChange={setSelectedRegion}>
+                    <SelectTrigger className="bg-secondary/50">
+                      <SelectValue placeholder="Select Region" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">None</SelectItem>
+                      {regions.map((region: any) => (
+                        <SelectItem key={region.id} value={region.id}>
+                          {region.name} ({region.code})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Assign Territory</Label>
+                    <Input
+                      placeholder="e.g., North"
+                      value={territory}
+                      onChange={(e) => setTerritory(e.target.value)}
+                      className="bg-secondary/50"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Assign to Sub Territory</Label>
+                    <Input
+                      placeholder="e.g., Downtown"
+                      value={subTerritory}
+                      onChange={(e) => setSubTerritory(e.target.value)}
+                      className="bg-secondary/50"
+                    />
+                  </div>
+                </div>
+
+                <Button 
+                  className="w-full" 
+                  onClick={handleManualSubmit}
+                  disabled={addStockMutation.isPending}
+                >
+                  {addStockMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Add Stock
+                </Button>
+              </div>
+            </DialogContent>iption>Enter stock details manually</DialogDescription>
               </DialogHeader>
               <div className="space-y-4 pt-4">
                 <div className="space-y-2">
