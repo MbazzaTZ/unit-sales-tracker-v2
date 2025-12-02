@@ -36,6 +36,7 @@ const adminMenuItems = [
   { id: 'stock', label: 'Stock Management', icon: Package },
   { id: 'assign', label: 'Assign Stock', icon: Target },
   { id: 'tls', label: 'TL Management', icon: UserCheck },
+  { id: 'managers', label: 'Manager Management', icon: Users },
   { id: 'approvals', label: 'Approvals', icon: CheckSquare },
   { id: 'reports', label: 'Reports', icon: BarChart3 },
   { id: 'profile', label: 'Profile', icon: Settings },

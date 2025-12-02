@@ -231,11 +231,11 @@ export function AdminStockManagement() {
     // Add optional fields
     if (smartcardNumber) stockData.smartcard_number = smartcardNumber;
     if (serialNumber) stockData.serial_number = serialNumber;
-    if (selectedTL) {
+    if (selectedTL && selectedTL !== 'none') {
       stockData.assigned_to_tl = selectedTL;
       stockData.status = 'assigned-tl';
     }
-    if (selectedRegion) stockData.region_id = selectedRegion;
+    if (selectedRegion && selectedRegion !== 'none') stockData.region_id = selectedRegion;
     if (territory) stockData.territory = territory;
     if (subTerritory) stockData.sub_territory = subTerritory;
     
@@ -374,7 +374,7 @@ export function AdminStockManagement() {
                       <SelectValue placeholder="Select Team Leader" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">None</SelectItem>
+                      <SelectItem value="none">None</SelectItem>
                       {teamLeaders.map((tl: any) => (
                         <SelectItem key={tl.id} value={tl.id}>
                           {tl.profiles?.full_name || 'Unknown TL'}
@@ -391,7 +391,7 @@ export function AdminStockManagement() {
                       <SelectValue placeholder="Select Region" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">None</SelectItem>
+                      <SelectItem value="none">None</SelectItem>
                       {regions.map((region: any) => (
                         <SelectItem key={region.id} value={region.id}>
                           {region.name} ({region.code})

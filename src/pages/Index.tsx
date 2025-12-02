@@ -11,6 +11,7 @@ import { DSRAddSale } from '@/components/views/DSRAddSale';
 import { DSRMySales } from '@/components/views/DSRMySales';
 import { AdminStockManagement } from '@/components/views/AdminStockManagement';
 import { AdminTLManagement } from '@/components/views/AdminTLManagement';
+import { AdminManagerManagement } from '@/components/views/AdminManagerManagement';
 import { AdminAssignStock } from '@/components/views/AdminAssignStock';
 import { AdminApprovals } from '@/components/views/AdminApprovals';
 import { AdminRegionManagement } from '@/components/views/AdminRegionManagement';
@@ -74,6 +75,8 @@ const Index = () => {
           return <AdminAssignStock />;
         case 'tls':
           return <AdminTLManagement />;
+        case 'managers':
+          return <AdminManagerManagement />;
         case 'approvals':
           return <AdminApprovals />;
         case 'profile':

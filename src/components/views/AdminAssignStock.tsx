@@ -26,7 +26,7 @@ import { useAuth } from '@/contexts/AuthContext';
 export function AdminAssignStock() {
   const [selectedStock, setSelectedStock] = useState<string[]>([]);
   const [selectedTL, setSelectedTL] = useState('');
-  const [selectedRegion, setSelectedRegion] = useState('');
+  const [selectedRegion, setSelectedRegion] = useState('all');
   
   const { toast } = useToast();
   const { user } = useAuth();
@@ -91,7 +91,7 @@ export function AdminAssignStock() {
           status: 'assigned-tl',
           assigned_to_tl: selectedTL,
           assigned_by: user?.id,
-          region_id: tl?.region?.id || selectedRegion || null,
+          region_id: tl?.region?.id || (selectedRegion !== 'all' ? selectedRegion : null) || null,
           date_assigned: new Date().toISOString()
         })
         .in('id', selectedStock);
@@ -124,7 +124,7 @@ export function AdminAssignStock() {
     }
   };
 
-  const filteredTLs = selectedRegion 
+  const filteredTLs = selectedRegion && selectedRegion !== 'all'
     ? teamLeaders.filter(tl => tl.region?.id === selectedRegion)
     : teamLeaders;
 
@@ -145,7 +145,7 @@ export function AdminAssignStock() {
                 <SelectValue placeholder="All regions" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All regions</SelectItem>
+                <SelectItem value="all">All regions</SelectItem>
                 {regions.map(r => (
                   <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
                 ))}
