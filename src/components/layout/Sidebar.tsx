@@ -26,9 +26,8 @@ interface SidebarProps {
 const adminMenuItems = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'stock', label: 'Stock Management', icon: Package },
-  { id: 'tl-management', label: 'TL Management', icon: UserCheck },
-  { id: 'regions', label: 'Regions', icon: MapPin },
-  { id: 'targets', label: 'Targets', icon: Target },
+  { id: 'assign', label: 'Assign Stock', icon: Target },
+  { id: 'tls', label: 'TL Management', icon: UserCheck },
   { id: 'approvals', label: 'Approvals', icon: CheckSquare },
   { id: 'reports', label: 'Reports', icon: BarChart3 },
   { id: 'settings', label: 'Settings', icon: Settings },
