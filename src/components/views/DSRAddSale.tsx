@@ -29,7 +29,7 @@ import {
   TrendingUp
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { DSTV_PACKAGES, COMMISSION_RATES } from '@/data/mockData';
+import { useQuery } from '@tanstack/react-query';
 
 interface DSRAddSaleProps {
   onNavigate: (tab: string) => void;
@@ -72,6 +72,61 @@ export function DSRAddSale({ onNavigate }: DSRAddSaleProps) {
 
   const [filteredStock, setFilteredStock] = useState<StockOption[]>([]);
 
+  // Fetch commission rates from database
+  const { data: commissionRates } = useQuery({
+    queryKey: ['commission-rates'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('commission_rates')
+        .select('*')
+        .eq('is_active', true);
+      
+      if (error) throw error;
+      
+      const rates: Record<string, { upfront: number; activation: number }> = {};
+      data?.forEach(rate => {
+        rates[rate.product_type] = {
+          upfront: rate.upfront_amount || 0,
+          activation: rate.activation_amount || 0
+        };
+      });
+      return rates;
+    },
+  });
+
+  // Fetch package commission rates
+  const { data: packageCommissionRates } = useQuery({
+    queryKey: ['package-commission-rates'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('package_commission_rates')
+        .select('*');
+      
+      if (error) throw error;
+      
+      const rates: Record<string, number> = {};
+      data?.forEach(rate => {
+        rates[rate.package_name] = rate.commission_amount || 0;
+      });
+      return rates;
+    },
+  });
+
+  // Fetch DSTV packages from database
+  const { data: dstvPackages } = useQuery({
+    queryKey: ['dstv-packages'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('dstv_packages')
+        .select('*')
+        .eq('is_active', true)
+        .order('monthly_price');
+      
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
   useEffect(() => {
     if (user) {
       fetchDSRStock();
@@ -93,12 +148,17 @@ export function DSRAddSale({ onNavigate }: DSRAddSaleProps) {
 
   // Calculate estimated commission whenever relevant fields change
   useEffect(() => {
-    if (!stockType) {
+    if (!stockType || !commissionRates) {
       setEstimatedCommission(0);
       return;
     }
 
-    const rates = COMMISSION_RATES[stockType];
+    const rates = commissionRates[stockType];
+    if (!rates) {
+      setEstimatedCommission(0);
+      return;
+    }
+
     let commission = rates.upfront;
 
     // Add activation and package commission only for paid sales
@@ -106,16 +166,16 @@ export function DSRAddSale({ onNavigate }: DSRAddSaleProps) {
       commission += rates.activation;
 
       // Add package commission if package selected
-      if (packageType === 'Package' && dstvPackage) {
-        const selectedPackage = DSTV_PACKAGES.find(p => p.code === dstvPackage);
-        if (selectedPackage) {
-          commission += (selectedPackage.price * rates.packageRate) / 100;
+      if (packageType === 'Package' && dstvPackage && packageCommissionRates) {
+        const packageCommission = packageCommissionRates[dstvPackage.toUpperCase()];
+        if (packageCommission) {
+          commission += packageCommission;
         }
       }
     }
 
     setEstimatedCommission(commission);
-  }, [stockType, paymentStatus, packageType, dstvPackage]);
+  }, [stockType, paymentStatus, packageType, dstvPackage, commissionRates, packageCommissionRates]);
 
   async function fetchDSRStock() {
     if (!user) return;
@@ -603,17 +663,17 @@ export function DSRAddSale({ onNavigate }: DSRAddSaleProps) {
                       <SelectValue placeholder="Select DStv package" />
                     </SelectTrigger>
                     <SelectContent>
-                      {DSTV_PACKAGES.map((pkg) => (
-                        <SelectItem key={pkg.code} value={pkg.code}>
+                      {dstvPackages?.map((pkg) => (
+                        <SelectItem key={pkg.package_code} value={pkg.package_code}>
                           <div className="flex items-center justify-between w-full">
                             <div className="flex flex-col">
-                              <span className="font-medium">{pkg.name}</span>
+                              <span className="font-medium">{pkg.package_name}</span>
                               <span className="text-xs text-muted-foreground">
-                                {pkg.channels} channels
+                                {pkg.description}
                               </span>
                             </div>
                             <span className="text-sm text-muted-foreground ml-4">
-                              TZS {pkg.price.toLocaleString()}/mo
+                              TZS {pkg.monthly_price.toLocaleString()}/mo
                             </span>
                           </div>
                         </SelectItem>
@@ -693,16 +753,16 @@ export function DSRAddSale({ onNavigate }: DSRAddSaleProps) {
                   </div>
                 )}
 
-                {dstvPackage && (
+                {dstvPackage && dstvPackages && (
                   <div className="p-2 bg-blue-50 dark:bg-blue-950/20 rounded border border-blue-200 dark:border-blue-800">
                     <div className="flex justify-between items-center">
                       <span className="text-xs text-muted-foreground">DStv Package</span>
                       <span className="text-xs font-medium">
-                        TZS {DSTV_PACKAGES.find(p => p.code === dstvPackage)?.price.toLocaleString()}/mo
+                        TZS {dstvPackages.find(p => p.package_code === dstvPackage)?.monthly_price.toLocaleString()}/mo
                       </span>
                     </div>
                     <p className="text-sm font-semibold mt-1">
-                      {DSTV_PACKAGES.find(p => p.code === dstvPackage)?.name}
+                      {dstvPackages.find(p => p.package_code === dstvPackage)?.package_name}
                     </p>
                   </div>
                 )}
@@ -727,22 +787,22 @@ export function DSRAddSale({ onNavigate }: DSRAddSaleProps) {
                       <div className="text-2xl font-bold text-green-700 dark:text-green-300">
                         TZS {estimatedCommission.toLocaleString()}
                       </div>
-                      {stockType && (
+                      {stockType && commissionRates && (
                         <div className="mt-2 text-xs space-y-1 text-green-600 dark:text-green-400">
                           <div className="flex justify-between">
                             <span>Upfront:</span>
-                            <span>TZS {COMMISSION_RATES[stockType].upfront.toLocaleString()}</span>
+                            <span>TZS {commissionRates[stockType]?.upfront.toLocaleString()}</span>
                           </div>
                           {paymentStatus === 'paid' && (
                             <>
                               <div className="flex justify-between">
                                 <span>Activation:</span>
-                                <span>TZS {COMMISSION_RATES[stockType].activation.toLocaleString()}</span>
+                                <span>TZS {commissionRates[stockType]?.activation.toLocaleString()}</span>
                               </div>
-                              {dstvPackage && (
+                              {dstvPackage && packageCommissionRates && (
                                 <div className="flex justify-between">
-                                  <span>Package ({COMMISSION_RATES[stockType].packageRate}%):</span>
-                                  <span>TZS {((DSTV_PACKAGES.find(p => p.code === dstvPackage)?.price || 0) * COMMISSION_RATES[stockType].packageRate / 100).toLocaleString()}</span>
+                                  <span>Package Commission:</span>
+                                  <span>TZS {(packageCommissionRates[dstvPackage.toUpperCase()] || 0).toLocaleString()}</span>
                                 </div>
                               )}
                             </>

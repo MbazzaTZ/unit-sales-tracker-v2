@@ -111,43 +111,39 @@ export function AdminCommissionManagement() {
 
   const handleSave = async () => {
     try {
+      let error: any = null;
+      
       if (editType === 'package') {
-        const { error } = await supabase
+        const { error: updateError } = await supabase
           .from('dstv_packages')
           .update({
             monthly_price: parseFloat(editItem.monthly_price),
             package_name: editItem.package_name
           })
           .eq('id', editItem.id);
-        
-        if (error) throw error;
-        toast.success('Package price updated');
+        error = updateError;
         
       } else if (editType === 'commission') {
-        const { error } = await supabase
+        const { error: updateError } = await supabase
           .from('commission_rates')
           .update({
             upfront_amount: parseFloat(editItem.upfront_amount),
             activation_amount: parseFloat(editItem.activation_amount)
           })
           .eq('id', editItem.id);
-        
-        if (error) throw error;
-        toast.success('Commission rate updated');
+        error = updateError;
         
       } else if (editType === 'package_commission') {
-        const { error } = await supabase
+        const { error: updateError } = await supabase
           .from('package_commission_rates')
           .update({
             commission_amount: parseFloat(editItem.commission_amount)
           })
           .eq('id', editItem.id);
-        
-        if (error) throw error;
-        toast.success('Package commission updated');
+        error = updateError;
         
       } else if (editType === 'bonus') {
-        const { error } = await supabase
+        const { error: updateError } = await supabase
           .from('dsr_bonus_tiers')
           .update({
             min_sales: parseInt(editItem.min_sales),
@@ -155,19 +151,26 @@ export function AdminCommissionManagement() {
             bonus_amount: parseFloat(editItem.bonus_amount)
           })
           .eq('id', editItem.id);
-        
-        if (error) throw error;
-        toast.success('Bonus tier updated');
+        error = updateError;
         
       } else if (editType === 'device') {
         // Device prices are hardcoded in trigger, would need to create a table for them
         toast.info('Device prices are updated via database trigger');
+        setEditDialog(false);
+        return;
       }
 
+      if (error) {
+        console.error('Update error:', error);
+        throw error;
+      }
+
+      toast.success('Changes saved successfully');
       setEditDialog(false);
       fetchData();
       
     } catch (error: any) {
+      console.error('Error saving changes:', error);
       toast.error('Failed to save: ' + error.message);
     }
   };
@@ -209,37 +212,49 @@ export function AdminCommissionManagement() {
               <CardDescription>Monthly subscription prices for DSTV packages</CardDescription>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Package Code</TableHead>
-                    <TableHead>Package Name</TableHead>
-                    <TableHead>Monthly Price</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Action</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {packages.map((pkg) => (
-                    <TableRow key={pkg.id}>
-                      <TableCell className="font-mono">{pkg.package_code}</TableCell>
-                      <TableCell className="font-medium">{pkg.package_name}</TableCell>
-                      <TableCell>TZS {pkg.monthly_price.toLocaleString()}</TableCell>
-                      <TableCell>
-                        <Badge variant={pkg.is_active ? 'default' : 'secondary'}>
-                          {pkg.is_active ? 'Active' : 'Inactive'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button size="sm" variant="outline" onClick={() => handleEdit('package', pkg)}>
-                          <Edit className="h-4 w-4 mr-1" />
-                          Edit
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              {packages.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  No package prices configured
+                </div>
+              ) : (
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Package Code</TableHead>
+                        <TableHead>Package Name</TableHead>
+                        <TableHead>Monthly Price</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead className="text-right">Action</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {packages.map((pkg) => (
+                        <TableRow key={pkg.id}>
+                          <TableCell className="font-mono">{pkg.package_code}</TableCell>
+                          <TableCell className="font-medium">{pkg.package_name}</TableCell>
+                          <TableCell>TZS {pkg.monthly_price.toLocaleString()}</TableCell>
+                          <TableCell>
+                            <Badge variant={pkg.is_active ? 'default' : 'secondary'}>
+                              {pkg.is_active ? 'Active' : 'Inactive'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              onClick={() => handleEdit('package', pkg)}
+                            >
+                              <Edit className="h-4 w-4 mr-1" />
+                              Edit
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -257,31 +272,43 @@ export function AdminCommissionManagement() {
                 <CardDescription>Upfront and activation commissions per product type</CardDescription>
               </CardHeader>
               <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Type</TableHead>
-                      <TableHead>Upfront</TableHead>
-                      <TableHead>Activation</TableHead>
-                      <TableHead></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {commissionRates.map((rate) => (
-                      <TableRow key={rate.id}>
-                        <TableCell className="font-medium">{rate.product_type}</TableCell>
-                        <TableCell>TZS {rate.upfront_amount.toLocaleString()}</TableCell>
-                        <TableCell>TZS {rate.activation_amount.toLocaleString()}</TableCell>
-                        <TableCell>
-                          <Button size="sm" variant="outline" onClick={() => handleEdit('commission', rate)}>
-                            <Edit className="h-4 w-4 mr-1" />
-                            Edit
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                {commissionRates.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No commission rates configured
+                  </div>
+                ) : (
+                  <div className="rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Type</TableHead>
+                          <TableHead>Upfront</TableHead>
+                          <TableHead>Activation</TableHead>
+                          <TableHead className="text-right">Action</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {commissionRates.map((rate) => (
+                          <TableRow key={rate.id}>
+                            <TableCell className="font-medium">{rate.product_type}</TableCell>
+                            <TableCell>TZS {rate.upfront_amount.toLocaleString()}</TableCell>
+                            <TableCell>TZS {rate.activation_amount.toLocaleString()}</TableCell>
+                            <TableCell className="text-right">
+                              <Button 
+                                size="sm" 
+                                variant="outline" 
+                                onClick={() => handleEdit('commission', rate)}
+                              >
+                                <Edit className="h-4 w-4 mr-1" />
+                                Edit
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -295,29 +322,41 @@ export function AdminCommissionManagement() {
                 <CardDescription>Commission per package type</CardDescription>
               </CardHeader>
               <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Package</TableHead>
-                      <TableHead>Commission</TableHead>
-                      <TableHead></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {packageCommissions.map((pkg) => (
-                      <TableRow key={pkg.id}>
-                        <TableCell className="font-medium">{pkg.package_name}</TableCell>
-                        <TableCell>TZS {pkg.commission_amount.toLocaleString()}</TableCell>
-                        <TableCell>
-                          <Button size="sm" variant="outline" onClick={() => handleEdit('package_commission', pkg)}>
-                            <Edit className="h-4 w-4 mr-1" />
-                            Edit
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                {packageCommissions.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No package commissions configured
+                  </div>
+                ) : (
+                  <div className="rounded-md border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Package</TableHead>
+                          <TableHead>Commission</TableHead>
+                          <TableHead className="text-right">Action</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {packageCommissions.map((pkg) => (
+                          <TableRow key={pkg.id}>
+                            <TableCell className="font-medium">{pkg.package_name}</TableCell>
+                            <TableCell>TZS {pkg.commission_amount.toLocaleString()}</TableCell>
+                            <TableCell className="text-right">
+                              <Button 
+                                size="sm" 
+                                variant="outline" 
+                                onClick={() => handleEdit('package_commission', pkg)}
+                              >
+                                <Edit className="h-4 w-4 mr-1" />
+                                Edit
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
@@ -334,39 +373,51 @@ export function AdminCommissionManagement() {
               <CardDescription>Monthly sales bonus structure based on performance tiers</CardDescription>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Tier Name</TableHead>
-                    <TableHead>Min Sales</TableHead>
-                    <TableHead>Max Sales</TableHead>
-                    <TableHead>Bonus Amount</TableHead>
-                    <TableHead>Requires Experience</TableHead>
-                    <TableHead className="text-right">Action</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {bonusTiers.map((tier) => (
-                    <TableRow key={tier.id}>
-                      <TableCell className="font-medium">{tier.tier_name}</TableCell>
-                      <TableCell>{tier.min_sales}</TableCell>
-                      <TableCell>{tier.max_sales === 999 ? '45+' : tier.max_sales}</TableCell>
-                      <TableCell>TZS {tier.bonus_amount.toLocaleString()}</TableCell>
-                      <TableCell>
-                        <Badge variant={tier.requires_experience ? 'secondary' : 'default'}>
-                          {tier.requires_experience ? 'Yes' : 'No'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button size="sm" variant="outline" onClick={() => handleEdit('bonus', tier)}>
-                          <Edit className="h-4 w-4 mr-1" />
-                          Edit
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+              {bonusTiers.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  No bonus tiers configured
+                </div>
+              ) : (
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Tier Name</TableHead>
+                        <TableHead>Min Sales</TableHead>
+                        <TableHead>Max Sales</TableHead>
+                        <TableHead>Bonus Amount</TableHead>
+                        <TableHead>Requires Experience</TableHead>
+                        <TableHead className="text-right">Action</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {bonusTiers.map((tier) => (
+                        <TableRow key={tier.id}>
+                          <TableCell className="font-medium">{tier.tier_name}</TableCell>
+                          <TableCell>{tier.min_sales}</TableCell>
+                          <TableCell>{tier.max_sales === 999 ? '45+' : tier.max_sales}</TableCell>
+                          <TableCell>TZS {tier.bonus_amount.toLocaleString()}</TableCell>
+                          <TableCell>
+                            <Badge variant={tier.requires_experience ? 'secondary' : 'default'}>
+                              {tier.requires_experience ? 'Yes' : 'No'}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              onClick={() => handleEdit('bonus', tier)}
+                            >
+                              <Edit className="h-4 w-4 mr-1" />
+                              Edit
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -382,42 +433,53 @@ export function AdminCommissionManagement() {
               <CardDescription>Base prices for decoders and full sets</CardDescription>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Device Type</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead>Price</TableHead>
-                    <TableHead className="text-right">Action</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  <TableRow>
-                    <TableCell className="font-medium">FS</TableCell>
-                    <TableCell>Full Set (Decoder + Dish)</TableCell>
-                    <TableCell>TZS 65,000</TableCell>
-                    <TableCell className="text-right">
-                      <Button size="sm" variant="outline" onClick={() => handleEdit('device', { type: 'FS', price: 65000 })}>
-                        <Edit className="h-4 w-4 mr-1" />
-                        Edit
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                  <TableRow>
-                    <TableCell className="font-medium">DO</TableCell>
-                    <TableCell>Decoder Only</TableCell>
-                    <TableCell>TZS 25,000</TableCell>
-                    <TableCell className="text-right">
-                      <Button size="sm" variant="outline" onClick={() => handleEdit('device', { type: 'DO', price: 25000 })}>
-                        <Edit className="h-4 w-4 mr-1" />
-                        Edit
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                </TableBody>
-              </Table>
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Device Type</TableHead>
+                      <TableHead>Description</TableHead>
+                      <TableHead>Price</TableHead>
+                      <TableHead className="text-right">Action</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    <TableRow>
+                      <TableCell className="font-medium">FS</TableCell>
+                      <TableCell>Full Set (Decoder + Dish)</TableCell>
+                      <TableCell>TZS 65,000</TableCell>
+                      <TableCell className="text-right">
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          onClick={() => handleEdit('device', { type: 'FS', price: 65000 })}
+                        >
+                          <Edit className="h-4 w-4 mr-1" />
+                          Edit
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                    <TableRow>
+                      <TableCell className="font-medium">DO</TableCell>
+                      <TableCell>Decoder Only</TableCell>
+                      <TableCell>TZS 25,000</TableCell>
+                      <TableCell className="text-right">
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          onClick={() => handleEdit('device', { type: 'DO', price: 25000 })}
+                        >
+                          <Edit className="h-4 w-4 mr-1" />
+                          Edit
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </div>
               <p className="text-sm text-muted-foreground mt-4">
-                Note: Device prices are currently hardcoded in the database trigger. To change them, update the trigger function.
+                Note: Device prices are currently hardcoded in the database trigger. 
+                To change them, update the trigger function.
               </p>
             </CardContent>
           </Card>

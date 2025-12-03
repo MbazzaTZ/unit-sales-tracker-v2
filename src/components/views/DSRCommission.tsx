@@ -12,17 +12,34 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { DollarSign, TrendingUp, Package, CheckCircle } from "lucide-react";
 
-// Commission rates per product type
-const COMMISSION_RATES = {
-  'FS': 2000, // TZS 2,000 per FS sale
-  'DO': 1500, // TZS 1,500 per DO sale
-};
-
 interface DSRCommissionProps {
   onNavigate?: (tab: string) => void;
 }
 
 export const DSRCommission = ({ onNavigate }: DSRCommissionProps) => {
+  // Fetch commission rates from database
+  const { data: commissionRates } = useQuery({
+    queryKey: ['commission-rates'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('commission_rates')
+        .select('*')
+        .eq('is_active', true);
+      
+      if (error) throw error;
+      
+      // Convert to lookup object
+      const rates: Record<string, { upfront: number; activation: number }> = {};
+      data?.forEach(rate => {
+        rates[rate.product_type] = {
+          upfront: rate.upfront_amount || 0,
+          activation: rate.activation_amount || 0
+        };
+      });
+      return rates;
+    },
+  });
+
   // Fetch DSR info
   const { data: dsrInfo } = useQuery({
     queryKey: ['dsr-info'],
@@ -75,7 +92,11 @@ export const DSRCommission = ({ onNavigate }: DSRCommissionProps) => {
   // Calculate commission breakdown
   const commissionBreakdown = salesData?.reduce((acc, sale) => {
     const saleType = sale.sale_type as 'FS' | 'DO';
-    const commissionAmount = COMMISSION_RATES[saleType] || 0;
+    const rates = commissionRates?.[saleType];
+    
+    // Calculate total commission (upfront + activation when paid and approved)
+    const upfrontCommission = rates?.upfront || 0;
+    const activationCommission = rates?.activation || 0;
     
     // Commission is only earned for paid, verified, and approved sales
     const isCommissionEligible = 
@@ -92,6 +113,8 @@ export const DSRCommission = ({ onNavigate }: DSRCommissionProps) => {
         totalCommission: 0,
         earnedCommission: 0,
         pendingCommission: 0,
+        upfront: rates?.upfront || 0,
+        activation: rates?.activation || 0,
       };
     }
 
@@ -103,14 +126,19 @@ export const DSRCommission = ({ onNavigate }: DSRCommissionProps) => {
 
     if (isCommissionEligible) {
       acc[saleType].eligibleCount++;
-      acc[saleType].earnedCommission += commissionAmount;
+      // Earned commission = upfront + activation
+      acc[saleType].earnedCommission += upfrontCommission + activationCommission;
     } else if (sale.payment_status === 'paid' && (!sale.tl_verified || !sale.admin_approved)) {
       // Paid but pending verification/approval
       acc[saleType].pendingCount++;
-      acc[saleType].pendingCommission += commissionAmount;
+      acc[saleType].pendingCommission += upfrontCommission + activationCommission;
     }
 
-    acc[saleType].totalCommission += commissionAmount;
+    // Total includes upfront for all, activation only for paid
+    acc[saleType].totalCommission += upfrontCommission;
+    if (sale.payment_status === 'paid') {
+      acc[saleType].totalCommission += activationCommission;
+    }
 
     return acc;
   }, {} as Record<string, any>) || {};
@@ -207,24 +235,26 @@ export const DSRCommission = ({ onNavigate }: DSRCommissionProps) => {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="p-4 border rounded-lg">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Full Setup (FS)</p>
-                  <p className="text-2xl font-bold">TZS 2,000</p>
+            {commissionRates && Object.entries(commissionRates).map(([type, rates]: [string, any]) => (
+              <div key={type} className="p-4 border rounded-lg">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-muted-foreground">
+                      {type === 'FS' ? 'Full Setup (FS)' : type === 'DO' ? 'Decoder Only (DO)' : type}
+                    </p>
+                    <Badge variant="default">Per Sale</Badge>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Upfront</p>
+                    <p className="text-xl font-bold">TZS {rates.upfront.toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Activation</p>
+                    <p className="text-xl font-bold text-green-600">TZS {rates.activation.toLocaleString()}</p>
+                  </div>
                 </div>
-                <Badge variant="default">Per Sale</Badge>
               </div>
-            </div>
-            <div className="p-4 border rounded-lg">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Dish Only (DO)</p>
-                  <p className="text-2xl font-bold">TZS 1,500</p>
-                </div>
-                <Badge variant="default">Per Sale</Badge>
-              </div>
-            </div>
+            ))}
           </div>
         </CardContent>
       </Card>
@@ -257,7 +287,10 @@ export const DSRCommission = ({ onNavigate }: DSRCommissionProps) => {
                     </Badge>
                   </TableCell>
                   <TableCell className="font-medium">
-                    TZS {COMMISSION_RATES[saleType as 'FS' | 'DO'].toLocaleString()}
+                    <div className="space-y-1">
+                      <div>Upfront: TZS {data.upfront.toLocaleString()}</div>
+                      <div>Activation: TZS {data.activation.toLocaleString()}</div>
+                    </div>
                   </TableCell>
                   <TableCell>{data.count}</TableCell>
                   <TableCell>{data.paidCount}</TableCell>
@@ -293,12 +326,18 @@ export const DSRCommission = ({ onNavigate }: DSRCommissionProps) => {
           <CardTitle>Commission Policy</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2 text-sm">
-          <p><strong>Earning Conditions:</strong></p>
+          <p><strong>Commission Structure:</strong></p>
           <ul className="list-disc list-inside space-y-1 text-muted-foreground ml-4">
-            <li>Commission is earned only when the sale is <strong>paid</strong></li>
+            <li><strong>Upfront Commission:</strong> Paid immediately on sale creation</li>
+            <li><strong>Activation Commission:</strong> Paid when sale is paid, verified by TL, and approved by Admin</li>
+            <li>Package commissions apply when a DSTV package is included with the sale</li>
+          </ul>
+          <p className="mt-4"><strong>Earning Conditions:</strong></p>
+          <ul className="list-disc list-inside space-y-1 text-muted-foreground ml-4">
+            <li>Upfront commission is earned on all sales</li>
+            <li>Activation commission requires sale to be <strong>paid</strong></li>
             <li>Sale must be <strong>verified by Team Leader</strong></li>
             <li>Sale must be <strong>approved by Admin</strong></li>
-            <li>Unpaid sales do not qualify for commission until payment is received</li>
           </ul>
           <p className="mt-4"><strong>Status Definitions:</strong></p>
           <ul className="list-disc list-inside space-y-1 text-muted-foreground ml-4">
