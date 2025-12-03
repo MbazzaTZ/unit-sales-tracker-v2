@@ -2,6 +2,75 @@
 -- ADD DISTRIBUTION EXECUTIVES (DE) AND AGENTS TABLES
 -- ============================================
 
+-- Create products table if it doesn't exist
+CREATE TABLE IF NOT EXISTS public.products (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  category TEXT,
+  price DECIMAL(10, 2),
+  description TEXT,
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Create index for products
+CREATE INDEX IF NOT EXISTS idx_products_name ON public.products(name);
+
+-- Enable RLS for products
+ALTER TABLE public.products ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for products (everyone can view, only admins can modify)
+DROP POLICY IF EXISTS "Everyone can view products" ON public.products;
+CREATE POLICY "Everyone can view products"
+  ON public.products
+  FOR SELECT
+  USING (true);
+
+DROP POLICY IF EXISTS "Admins can insert products" ON public.products;
+CREATE POLICY "Admins can insert products"
+  ON public.products
+  FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM user_roles
+      WHERE user_id = auth.uid()
+      AND role = 'admin'
+    )
+  );
+
+DROP POLICY IF EXISTS "Admins can update products" ON public.products;
+CREATE POLICY "Admins can update products"
+  ON public.products
+  FOR UPDATE
+  USING (
+    EXISTS (
+      SELECT 1 FROM user_roles
+      WHERE user_id = auth.uid()
+      AND role = 'admin'
+    )
+  );
+
+DROP POLICY IF EXISTS "Admins can delete products" ON public.products;
+CREATE POLICY "Admins can delete products"
+  ON public.products
+  FOR DELETE
+  USING (
+    EXISTS (
+      SELECT 1 FROM user_roles
+      WHERE user_id = auth.uid()
+      AND role = 'admin'
+    )
+  );
+
+-- Insert some default products
+INSERT INTO public.products (name, category, price, description) VALUES
+  ('DSTV Decoder', 'Hardware', 150000, 'Standard DSTV decoder'),
+  ('GOtv Decoder', 'Hardware', 50000, 'Standard GOtv decoder'),
+  ('DSTV Compact', 'Subscription', 85000, 'DSTV Compact monthly subscription'),
+  ('DSTV Premium', 'Subscription', 165000, 'DSTV Premium monthly subscription'),
+  ('GOtv Max', 'Subscription', 35000, 'GOtv Max monthly subscription')
+ON CONFLICT DO NOTHING;
+
 -- Create distribution_executives table (same level as TL)
 CREATE TABLE IF NOT EXISTS public.distribution_executives (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
