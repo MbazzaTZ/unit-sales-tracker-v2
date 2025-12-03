@@ -274,7 +274,8 @@ export function AdminCommissionManagement() {
                         <TableCell>TZS {rate.activation_amount.toLocaleString()}</TableCell>
                         <TableCell>
                           <Button size="sm" variant="outline" onClick={() => handleEdit('commission', rate)}>
-                            <Edit className="h-4 w-4" />
+                            <Edit className="h-4 w-4 mr-1" />
+                            Edit
                           </Button>
                         </TableCell>
                       </TableRow>
@@ -309,7 +310,8 @@ export function AdminCommissionManagement() {
                         <TableCell>TZS {pkg.commission_amount.toLocaleString()}</TableCell>
                         <TableCell>
                           <Button size="sm" variant="outline" onClick={() => handleEdit('package_commission', pkg)}>
-                            <Edit className="h-4 w-4" />
+                            <Edit className="h-4 w-4 mr-1" />
+                            Edit
                           </Button>
                         </TableCell>
                       </TableRow>
