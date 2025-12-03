@@ -207,9 +207,9 @@ export function DSRAddSale({ onNavigate }: DSRAddSaleProps) {
         payment_status: paymentStatus,
       };
 
-      // Only add stock_item_id for FS/DO
-      if (stockType !== 'DVS' && stock) {
-        saleInsertData.stock_item_id = stock.stock_item_id;
+      // Only add stock_id for FS/DO (link to the actual stock record)
+      if (stockType !== 'DVS' && selectedStockId) {
+        saleInsertData.stock_id = selectedStockId;
       }
 
       const { data: saleData, error: saleError } = await supabase
