@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import * as XLSX from 'xlsx';
 import {
   Table,
   TableBody,
@@ -67,8 +68,16 @@ export function AdminStockManagement() {
   const [territory, setTerritory] = useState('');
   const [subTerritory, setSubTerritory] = useState('');
   const [batchNumber, setBatchNumber] = useState('');
-  const [csvData, setCsvData] = useState<{ stock_id: string; type: string }[]>([]);
+  const [csvData, setCsvData] = useState<{ 
+    batch_number: string;
+    serial_number: string; 
+    smartcard_number: string; 
+    type: string;
+    region?: string;
+    territory?: string;
+  }[]>([]);
   const [isProcessingCsv, setIsProcessingCsv] = useState(false);
+  const [uploadStats, setUploadStats] = useState({ total: 0, success: 0, failed: 0 });
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const { toast } = useToast();
@@ -216,11 +225,43 @@ export function AdminStockManagement() {
 
   // Bulk add stock mutation
   const bulkAddStockMutation = useMutation({
-    mutationFn: async ({ items, batchId }: { items: { stock_id: string; type: string }[]; batchId: string }) => {
+    mutationFn: async ({ items, batchId }: { 
+      items: { 
+        batch_number?: string;
+        serial_number: string; 
+        smartcard_number?: string; 
+        type: string;
+        region?: string;
+        territory?: string;
+      }[]; 
+      batchId: string 
+    }) => {
+      // Find region IDs for regions specified in Excel
+      const regionNames = items
+        .map(item => item.region)
+        .filter(Boolean)
+        .filter((v, i, a) => a.indexOf(v) === i); // unique values
+      
+      const regionMap: Record<string, string> = {};
+      if (regionNames.length > 0) {
+        const { data: regionsData } = await supabase
+          .from('regions')
+          .select('id, name')
+          .in('name', regionNames);
+        
+        regionsData?.forEach(r => {
+          regionMap[r.name] = r.id;
+        });
+      }
+
       const stockItems = items.map(item => ({
-        stock_id: item.stock_id,
+        stock_id: item.serial_number, // Use serial number as stock_id
+        serial_number: item.serial_number,
+        smartcard_number: item.smartcard_number || null,
         type: item.type,
         batch_id: batchId,
+        region_id: item.region ? regionMap[item.region] : null,
+        territory: item.territory || null,
         status: 'unassigned'
       }));
 
@@ -279,40 +320,85 @@ export function AdminStockManagement() {
     
     reader.onload = (event) => {
       try {
-        const text = event.target?.result as string;
-        const lines = text.split('\n').filter(line => line.trim());
-        const headers = lines[0].toLowerCase().split(',').map(h => h.trim());
+        const data = event.target?.result;
+        const workbook = XLSX.read(data, { type: 'binary' });
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonData = XLSX.utils.sheet_to_json(worksheet) as any[];
         
-        const stockIdIndex = headers.findIndex(h => h.includes('stock') || h.includes('id'));
-        const typeIndex = headers.findIndex(h => h.includes('type'));
-        
-        if (stockIdIndex === -1 || typeIndex === -1) {
-          toast({ 
-            title: 'Invalid CSV format', 
-            description: 'CSV must have columns for stock_id and type',
-            variant: 'destructive' 
-          });
+        if (jsonData.length === 0) {
+          toast({ title: 'No data found in file', variant: 'destructive' });
+          setIsProcessingCsv(false);
           return;
         }
         
-        const data = lines.slice(1).map(line => {
-          const values = line.split(',').map(v => v.trim());
+        // Map Excel columns (support multiple naming conventions)
+        const parsedData = jsonData.map((row, index) => {
+          const batchNum = row['Batch Number'] || row['Batch ID'] || row['batch_number'] || row['batch_id'] || row['BatchNumber'] || '';
+          const serialNum = row['Serial Number'] || row['serial_number'] || row['SerialNumber'] || row['SN'] || row['Stock ID'] || row['stock_id'] || '';
+          const smartcardNum = row['Smartcard Number'] || row['Smart Card'] || row['smartcard_number'] || row['SmartcardNumber'] || row['SC'] || '';
+          const stockType = row['Type'] || row['type'] || row['Stock Type'] || row['stock_type'] || '';
+          const region = row['Region'] || row['region'] || row['Territory'] || row['territory'] || '';
+          
+          if (!serialNum) {
+            console.warn(`Row ${index + 2}: Missing serial number`);
+            return null;
+          }
+          
+          // Auto-detect type if not provided
+          let type = stockType ? stockType.toString().toUpperCase() : '';
+          if (!type || !['FS', 'DO', 'DVS'].includes(type)) {
+            // Try to guess from serial number
+            const sn = serialNum.toString().toUpperCase();
+            if (sn.includes('FS')) type = 'FS';
+            else if (sn.includes('DO')) type = 'DO';
+            else if (sn.includes('DVS')) type = 'DVS';
+            else type = 'FS'; // Default
+          }
+          
           return {
-            stock_id: values[stockIdIndex],
-            type: values[typeIndex]
+            batch_number: batchNum.toString().trim(),
+            serial_number: serialNum.toString().trim(),
+            smartcard_number: smartcardNum.toString().trim(),
+            type: type,
+            region: region.toString().trim(),
+            territory: region.toString().trim()
           };
-        }).filter(item => item.stock_id && item.type);
+        }).filter(item => item !== null) as typeof csvData;
         
-        setCsvData(data);
-        toast({ title: `${data.length} items parsed from CSV` });
-      } catch {
-        toast({ title: 'Error parsing CSV', variant: 'destructive' });
+        if (parsedData.length === 0) {
+          toast({ 
+            title: 'No valid data found', 
+            description: 'Excel must have: Serial Number (required), Batch Number, Smartcard Number, Type, Region/Territory',
+            variant: 'destructive' 
+          });
+          setIsProcessingCsv(false);
+          return;
+        }
+        
+        // Auto-fill batch number from first row if not set
+        if (parsedData[0]?.batch_number && !batchNumber) {
+          setBatchNumber(parsedData[0].batch_number);
+        }
+        
+        setCsvData(parsedData);
+        toast({ 
+          title: `✅ ${parsedData.length} items loaded`,
+          description: `From ${file.name}`
+        });
+      } catch (error) {
+        console.error('File parsing error:', error);
+        toast({ 
+          title: 'Error parsing file', 
+          description: 'Please use Excel (.xlsx) or CSV format',
+          variant: 'destructive' 
+        });
       } finally {
         setIsProcessingCsv(false);
       }
     };
     
-    reader.readAsText(file);
+    reader.readAsBinaryString(file);
   };
 
   const handleBatchUpload = async () => {
@@ -511,14 +597,14 @@ export function AdminStockManagement() {
                     ) : (
                       <div className="space-y-2">
                         <FileSpreadsheet className="h-8 w-8 mx-auto text-muted-foreground" />
-                        <p className="text-muted-foreground">Click to upload CSV</p>
-                        <p className="text-xs text-muted-foreground">Required columns: stock_id, type</p>
+                        <p className="text-muted-foreground">Click to upload Excel/CSV</p>
+                        <p className="text-xs text-muted-foreground">Columns: Batch Number, Serial Number, Smartcard Number, Type, Region/Territory</p>
                       </div>
                     )}
                     <input
                       ref={fileInputRef}
                       type="file"
-                      accept=".csv"
+                      accept=".csv,.xlsx,.xls"
                       className="hidden"
                       onChange={handleFileUpload}
                     />
@@ -530,20 +616,26 @@ export function AdminStockManagement() {
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead className="text-xs">Stock ID</TableHead>
+                          <TableHead className="text-xs">Batch #</TableHead>
+                          <TableHead className="text-xs">Serial Number</TableHead>
+                          <TableHead className="text-xs">Smartcard</TableHead>
                           <TableHead className="text-xs">Type</TableHead>
+                          <TableHead className="text-xs">Region</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {csvData.slice(0, 5).map((item, i) => (
                           <TableRow key={i}>
-                            <TableCell className="text-xs font-mono">{item.stock_id}</TableCell>
+                            <TableCell className="text-xs font-mono">{item.batch_number || '-'}</TableCell>
+                            <TableCell className="text-xs font-mono">{item.serial_number}</TableCell>
+                            <TableCell className="text-xs font-mono">{item.smartcard_number || '-'}</TableCell>
                             <TableCell className="text-xs">{item.type}</TableCell>
+                            <TableCell className="text-xs">{item.region || item.territory || '-'}</TableCell>
                           </TableRow>
                         ))}
                         {csvData.length > 5 && (
                           <TableRow>
-                            <TableCell colSpan={2} className="text-xs text-center text-muted-foreground">
+                            <TableCell colSpan={5} className="text-xs text-center text-muted-foreground">
                               ...and {csvData.length - 5} more
                             </TableCell>
                           </TableRow>
