@@ -101,7 +101,7 @@ export function SalesPerformanceDashboard() {
     (s) => s.sale_type === "subscription"
   ).length;
 
-  const byPackage = {};
+  const byPackage: Record<string, number> = {};
   filteredSales.forEach((s) => {
     if (!byPackage[s.package_code]) byPackage[s.package_code] = 0;
     byPackage[s.package_code]++;
@@ -109,7 +109,7 @@ export function SalesPerformanceDashboard() {
 
   const packageList = Object.entries(byPackage).map(([pkg, count]) => ({
     package: pkg,
-    count,
+    count: count as number,
   }));
 
   // TL & DSR stats

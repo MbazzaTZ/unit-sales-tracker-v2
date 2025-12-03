@@ -252,7 +252,7 @@ export default function DSRMySales({ onNavigate }: DSRMySalesProps) {
               />
             </div>
 
-            <Select value={filterStatus} onValueChange={(v) => setFilterStatus(v)}>
+            <Select value={filterStatus} onValueChange={(v) => setFilterStatus(v as "all" | "paid" | "unpaid")}>
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
@@ -263,7 +263,7 @@ export default function DSRMySales({ onNavigate }: DSRMySalesProps) {
               </SelectContent>
             </Select>
 
-            <Select value={filterType} onValueChange={(v) => setFilterType(v)}>
+            <Select value={filterType} onValueChange={(v) => setFilterType(v as "all" | "FS" | "DO" | "DVS")}>
               <SelectTrigger className="w-[180px]">
                 <SelectValue placeholder="Stock Type" />
               </SelectTrigger>

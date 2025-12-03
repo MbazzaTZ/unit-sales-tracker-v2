@@ -311,7 +311,7 @@ export function TLDashboard({ onNavigate }: TLDashboardProps) {
       </div>
 
       {/* Charts */}
-      <SalesChart />
+      <SalesChart data={[]} />
 
       {/* Teams & DSR Leaderboard */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
