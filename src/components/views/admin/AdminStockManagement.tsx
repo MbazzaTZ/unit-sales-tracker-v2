@@ -136,19 +136,34 @@ export function AdminStockManagement() {
   const { data: teamLeaders = [] } = useQuery({
     queryKey: ['team_leaders'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      // First get team leaders
+      const { data: tls, error: tlError } = await supabase
         .from('team_leaders')
-        .select(`
-          id,
-          user_id,
-          profiles!team_leaders_user_id_fkey (
-            full_name
-          )
-        `)
+        .select('id, user_id')
         .order('created_at', { ascending: false });
       
-      if (error) throw error;
-      return data;
+      if (tlError) throw tlError;
+      if (!tls || tls.length === 0) return [];
+      
+      // Then get profiles for those user_ids
+      const userIds = tls.map(tl => tl.user_id).filter(Boolean);
+      if (userIds.length === 0) return tls;
+      
+      const { data: profiles, error: profileError } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .in('id', userIds);
+      
+      if (profileError) {
+        console.error('Error fetching profiles:', profileError);
+        return tls;
+      }
+      
+      // Merge profiles with team leaders
+      return tls.map(tl => ({
+        ...tl,
+        profiles: profiles?.find(p => p.id === tl.user_id) || null
+      }));
     }
   });
 
@@ -270,13 +285,17 @@ export function AdminStockManagement() {
       const stockItems = items.map(item => ({
         stock_id: item.serial_number, // Use serial number as stock_id
         serial_number: item.serial_number,
-        smartcard_number: item.smartcard_number || null,
+        smartcard_number: item.smartcard_number && item.smartcard_number.trim() !== '' ? item.smartcard_number : null,
         type: item.type,
         batch_id: batchId,
         region_id: item.region ? regionMap[item.region] : null,
         territory: item.territory || null,
         status: 'unassigned'
       }));
+      
+      // Debug: Log how many items have smartcard numbers
+      const withSmartcards = stockItems.filter(item => item.smartcard_number).length;
+      console.log(`Uploading ${stockItems.length} items, ${withSmartcards} have smartcard numbers`);
 
       const { error } = await supabase
         .from('stock')
@@ -351,14 +370,19 @@ export function AdminStockManagement() {
         
         // Map Excel columns (support multiple naming conventions)
         const parsedData = jsonData.map((row, index) => {
-          const batchNum = row['Batch Number'] || row['Batch ID'] || row['batch_number'] || row['batch_id'] || row['BatchNumber'] || '';
-          const serialNum = row['Serial Number'] || row['serial_number'] || row['SerialNumber'] || row['SN'] || row['Stock ID'] || row['stock_id'] || '';
-          const smartcardNum = row['Smartcard Number'] || row['Smart Card'] || row['smartcard_number'] || row['SmartcardNumber'] || row['SC'] || '';
-          const stockType = row['Type'] || row['type'] || row['Stock Type'] || row['stock_type'] || '';
-          const region = row['Region'] || row['region'] || row['Territory'] || row['territory'] || '';
+          // Log first row to help debug column names
+          if (index === 0) {
+            console.log('Excel columns found:', Object.keys(row));
+          }
           
-          if (!serialNum) {
-            console.warn(`Row ${index + 2}: Missing serial number`);
+          const batchNum = row['Batch Number'] || row['Batch ID'] || row['batch_number'] || row['batch_id'] || row['BatchNumber'] || row['Batch'] || '';
+          const serialNum = row['Serial Number'] || row['serial_number'] || row['SerialNumber'] || row['SN'] || row['Stock ID'] || row['stock_id'] || row['Serial'] || row['SERIAL NUMBER'] || row['SERIAL_NUMBER'] || '';
+          const smartcardNum = row['Smartcard Number'] || row['Smart Card'] || row['smartcard_number'] || row['SmartcardNumber'] || row['SC'] || row['Smartcard'] || row['SMARTCARD NUMBER'] || row['SMARTCARD_NUMBER'] || '';
+          const stockType = row['Type'] || row['type'] || row['Stock Type'] || row['stock_type'] || row['TYPE'] || '';
+          const region = row['Region'] || row['region'] || row['Territory'] || row['territory'] || row['REGION'] || '';
+          
+          if (!serialNum || serialNum.toString().trim() === '') {
+            console.warn(`Row ${index + 2}: Missing serial number. Available columns:`, Object.keys(row));
             return null;
           }
           
@@ -373,13 +397,16 @@ export function AdminStockManagement() {
             else type = 'FS'; // Default
           }
           
+          // Properly handle smartcard number - convert empty strings to empty for display
+          const trimmedSmartcard = smartcardNum ? smartcardNum.toString().trim() : '';
+          
           return {
-            batch_number: batchNum.toString().trim(),
+            batch_number: batchNum ? batchNum.toString().trim() : '',
             serial_number: serialNum.toString().trim(),
-            smartcard_number: smartcardNum.toString().trim(),
+            smartcard_number: trimmedSmartcard,
             type: type,
-            region: region.toString().trim(),
-            territory: region.toString().trim()
+            region: region ? region.toString().trim() : '',
+            territory: region ? region.toString().trim() : ''
           };
         }).filter(item => item !== null) as typeof csvData;
         
@@ -399,9 +426,14 @@ export function AdminStockManagement() {
         }
         
         setCsvData(parsedData);
+        
+        // Debug: Log sample data to verify smartcard parsing
+        console.log('Sample parsed data (first 3 rows):', parsedData.slice(0, 3));
+        const withSmartcard = parsedData.filter(item => item.smartcard_number).length;
+        
         toast({ 
           title: `✅ ${parsedData.length} items loaded`,
-          description: `From ${file.name}`
+          description: `${withSmartcard} with smartcard numbers • From ${file.name}`
         });
       } catch (error) {
         console.error('File parsing error:', error);
