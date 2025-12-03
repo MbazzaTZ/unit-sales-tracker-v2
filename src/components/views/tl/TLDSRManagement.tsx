@@ -134,7 +134,7 @@ export function TLDSRManagement() {
       // Load Zones
       const { data: zonesData } = await supabase
         .from('zones')
-        .select('*')
+        .select('id, name, code, zonal_manager, created_at')
         .order('name');
 
       setZones(zonesData || []);

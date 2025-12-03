@@ -83,7 +83,7 @@ export function AdminZoneManagement() {
 
       const { data: zoneData, error } = await supabase
         .from('zones')
-        .select('*')
+        .select('id, name, code, zonal_manager, created_at')
         .order('name');
 
       if (error) throw error;
@@ -181,7 +181,6 @@ export function AdminZoneManagement() {
             name: formData.name,
             code: formData.code.toUpperCase(),
             zonal_manager: formData.zonal_manager || null,
-            territories: validTerritories.length > 0 ? validTerritories : [],
           })
           .eq('id', editingZone.id);
 
@@ -199,7 +198,6 @@ export function AdminZoneManagement() {
             name: formData.name,
             code: formData.code.toUpperCase(),
             zonal_manager: formData.zonal_manager || null,
-            territories: validTerritories.length > 0 ? validTerritories : [],
           });
 
         if (error) throw error;
