@@ -203,43 +203,37 @@ export function DSRAddSale({ onNavigate }: DSRAddSaleProps) {
         stockItemType: stock?.name,
       });
 
-      // Extract short code from stockType (handles both "FS" and "Full Set (FS)" formats)
-      let saleType: string = stockType;
+      // CRITICAL FIX: Your database enum expects values like 'FS', 'DO', 'DVS'
+      // We need to send exactly what the database expects
+      let saleType: string = '';
       
-      // If stockType is empty or invalid, try to extract from stock item's type
-      if (!saleType && stock?.name) {
-        saleType = stock.name;
+      // Based on the error, your database expects these exact enum values:
+      // Check your Supabase table schema for the exact enum values
+      // Common values might be: 'FS', 'DO', 'DVS' or 'full_set', 'decoder_only', 'digital_virtual'
+      
+      // Try these mappings based on common patterns:
+      if (stockType === 'FS') {
+        saleType = 'FS'; // Most likely your database expects 'FS'
+      } else if (stockType === 'DO') {
+        saleType = 'DO'; // Most likely your database expects 'DO'
+      } else if (stockType === 'DVS') {
+        // DVS might map to DO or be separate
+        saleType = 'DO'; // Or 'DVS' if your database has that enum
       }
       
-      if (saleType.includes('(')) {
-        // Extract code from parentheses: "Full Set (FS)" -> "FS"
-        const match = saleType.match(/\(([^)]+)\)/);
-        saleType = match ? match[1] : saleType;
-      } else if (saleType.toLowerCase().includes('full set')) {
-        saleType = 'FS';
-      } else if (saleType.toLowerCase().includes('decoder only')) {
-        saleType = 'DO';
-      } else if (saleType.toLowerCase().includes('digital virtual')) {
-        saleType = 'DVS';
-      }
-      
-      // Handle DVS -> DO conversion
-      if (saleType === 'DVS') {
-        saleType = 'DO';
-      }
-
-      console.log('🔍 Extracted saleType:', saleType);
+      console.log('🔍 Final saleType for database:', saleType);
 
       // Create sale record
       const saleInsertData: any = {
         dsr_id: dsrId,
         tl_id: tlId,
         sale_id: `SALE-${Date.now()}`,
-        sale_type: saleType,
+        sale_type: saleType, // Use the mapped value
         smart_card_number: stockType === 'DVS' ? manualSerialNumber.trim() : stock!.smartcard_number,
         sn_number: stockType === 'DVS' ? manualSerialNumber.trim() : stock!.smartcard_number,
         package_option: packageType,
         payment_status: paymentStatus,
+        notes: notes || null,
       };
 
       console.log('🔍 Debug saleInsertData:', saleInsertData);
@@ -255,7 +249,15 @@ export function DSRAddSale({ onNavigate }: DSRAddSaleProps) {
         .select()
         .single();
 
-      if (saleError) throw saleError;
+      if (saleError) {
+        console.error('Supabase error details:', {
+          code: saleError.code,
+          message: saleError.message,
+          details: saleError.details,
+          hint: saleError.hint
+        });
+        throw saleError;
+      }
 
       // Update stock status only for FS/DO
       if (stockType !== 'DVS' && stock) {
@@ -292,9 +294,79 @@ export function DSRAddSale({ onNavigate }: DSRAddSaleProps) {
 
     } catch (error: any) {
       console.error('Error submitting sale:', error);
-      toast.error(error.message || 'Failed to record sale');
+      
+      // Provide more helpful error messages
+      let errorMessage = 'Failed to record sale';
+      
+      if (error.code === '22P02') {
+        errorMessage = `Database error: Invalid sale type value. Please contact support.`;
+        
+        // Try to help debug the issue
+        toast.error('Database schema issue detected', {
+          description: 'Your database may expect different enum values for sale_type.',
+          action: {
+            label: 'Check Database',
+            onClick: () => {
+              // You could add a function to check the database schema here
+              console.log('Check your Supabase sales table for sale_type enum values');
+            }
+          }
+        });
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      toast.error(errorMessage);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  // Helper function to check what enum values your database accepts
+  const checkDatabaseSchema = async () => {
+    try {
+      // Check existing sales to see what sale_type values are used
+      const { data: existingSales } = await supabase
+        .from('sales')
+        .select('sale_type')
+        .limit(5);
+      
+      console.log('Existing sale_type values:', existingSales?.map(s => s.sale_type));
+      
+      // Try to insert a test record with different values to see what works
+      const testValues = ['FS', 'DO', 'DVS', 'full_set', 'decoder_only', 'digital_virtual'];
+      
+      for (const testValue of testValues) {
+        try {
+          const { error } = await supabase
+            .from('sales')
+            .insert({
+              sale_id: `TEST-${Date.now()}`,
+              sale_type: testValue,
+              dsr_id: dsrId,
+              tl_id: tlId,
+              smart_card_number: 'TEST',
+              sn_number: 'TEST',
+              package_option: 'Package',
+              payment_status: 'paid'
+            });
+          
+          if (!error) {
+            console.log(`✅ Database accepts sale_type: "${testValue}"`);
+            // Delete the test record
+            await supabase
+              .from('sales')
+              .delete()
+              .eq('sale_id', `TEST-${Date.now()}`);
+          } else {
+            console.log(`❌ Database rejects sale_type: "${testValue}" - ${error.message}`);
+          }
+        } catch (e) {
+          console.log(`❌ Database rejects sale_type: "${testValue}"`);
+        }
+      }
+    } catch (err) {
+      console.error('Error checking schema:', err);
     }
   };
 
@@ -323,6 +395,17 @@ export function DSRAddSale({ onNavigate }: DSRAddSaleProps) {
             <p className="text-muted-foreground">Record a new sale transaction</p>
           </div>
         </div>
+        
+        {/* Debug button - remove in production */}
+        {process.env.NODE_ENV === 'development' && (
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={checkDatabaseSchema}
+          >
+            Check Schema
+          </Button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -340,6 +423,7 @@ export function DSRAddSale({ onNavigate }: DSRAddSaleProps) {
                 <Select value={stockType} onValueChange={(value) => {
                   setStockType(value as StockType);
                   setSelectedStockId('');
+                  setManualSerialNumber('');
                 }}>
                   <SelectTrigger id="stockType">
                     <SelectValue placeholder="Select FS or DO" />
@@ -365,6 +449,9 @@ export function DSRAddSale({ onNavigate }: DSRAddSaleProps) {
                     </SelectItem>
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Note: DVS sales require a package and manual serial number entry
+                </p>
               </div>
 
               {stockType === 'DVS' ? (
