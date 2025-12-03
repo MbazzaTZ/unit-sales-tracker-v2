@@ -78,6 +78,7 @@ export function AdminStockManagement() {
   }[]>([]);
   const [isProcessingCsv, setIsProcessingCsv] = useState(false);
   const [uploadStats, setUploadStats] = useState({ total: 0, success: 0, failed: 0 });
+  const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const { toast } = useToast();
@@ -223,6 +224,18 @@ export function AdminStockManagement() {
     }
   });
 
+  // Function to reset upload state
+  const resetUploadState = () => {
+    setCsvData([]);
+    setBatchNumber('');
+    setIsProcessingCsv(false);
+    setIsUploading(false);
+    setUploadStats({ total: 0, success: 0, failed: 0 });
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''; // Clear file input
+    }
+  };
+
   // Bulk add stock mutation
   const bulkAddStockMutation = useMutation({
     mutationFn: async ({ items, batchId }: { 
@@ -271,11 +284,13 @@ export function AdminStockManagement() {
       
       if (error) throw error;
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['stock'] });
-      toast({ title: 'Stock uploaded successfully', description: `${csvData.length} items added` });
-      setCsvData([]);
-      setBatchNumber('');
+      toast({ 
+        title: '✅ Stock uploaded successfully', 
+        description: `${variables.items.length} items added to batch ${batchNumber}` 
+      });
+      resetUploadState();
       setIsBatchOpen(false);
     },
     onError: (error: Error) => {
@@ -315,6 +330,8 @@ export function AdminStockManagement() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Clear previous data
+    setCsvData([]);
     setIsProcessingCsv(true);
     const reader = new FileReader();
     
@@ -556,7 +573,13 @@ export function AdminStockManagement() {
           </Dialog>
 
           {/* Batch Upload Dialog */}
-          <Dialog open={isBatchOpen} onOpenChange={setIsBatchOpen}>
+          <Dialog open={isBatchOpen} onOpenChange={(open) => {
+            setIsBatchOpen(open);
+            if (!open) {
+              // Reset state when dialog closes
+              resetUploadState();
+            }
+          }}>
             <DialogTrigger asChild>
               <Button className="gap-2">
                 <Upload className="h-4 w-4" />
@@ -591,8 +614,24 @@ export function AdminStockManagement() {
                     ) : csvData.length > 0 ? (
                       <div className="space-y-2">
                         <Check className="h-8 w-8 mx-auto text-success" />
-                        <p className="text-foreground font-medium">{csvData.length} items ready</p>
-                        <p className="text-xs text-muted-foreground">Click to change file</p>
+                        <p className="text-foreground font-medium">{csvData.length} items loaded</p>
+                        <div className="flex gap-2 justify-center mt-2">
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              resetUploadState();
+                            }}
+                          >
+                            <X className="h-3 w-3 mr-1" />
+                            Clear
+                          </Button>
+                          <Button size="sm" variant="ghost">
+                            <Upload className="h-3 w-3 mr-1" />
+                            Change File
+                          </Button>
+                        </div>
                       </div>
                     ) : (
                       <div className="space-y-2">
@@ -648,12 +687,19 @@ export function AdminStockManagement() {
                 <Button 
                   className="w-full" 
                   onClick={handleBatchUpload}
-                  disabled={bulkAddStockMutation.isPending || csvData.length === 0 || createBatchMutation.isPending}
+                  disabled={bulkAddStockMutation.isPending || csvData.length === 0 || createBatchMutation.isPending || !batchNumber}
                 >
-                  {(bulkAddStockMutation.isPending || createBatchMutation.isPending) && (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  {(bulkAddStockMutation.isPending || createBatchMutation.isPending) ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Uploading...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="mr-2 h-4 w-4" />
+                      Upload {csvData.length} Items
+                    </>
                   )}
-                  Upload {csvData.length} Items
                 </Button>
               </div>
             </DialogContent>
