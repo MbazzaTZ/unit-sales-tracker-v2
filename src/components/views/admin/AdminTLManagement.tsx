@@ -26,10 +26,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { UserPlus, Loader2, Users } from 'lucide-react';
+import { UserPlus, Loader2, Users, Edit, Trash2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 export function AdminTLManagement() {
   const [isOpen, setIsOpen] = useState(false);
@@ -37,7 +47,10 @@ export function AdminTLManagement() {
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [regionId, setRegionId] = useState('');
+  const [territoryId, setTerritoryId] = useState('');
   const [target, setTarget] = useState('');
+  const [editingTL, setEditingTL] = useState<any>(null);
+  const [deletingTL, setDeletingTL] = useState<any>(null);
   
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -52,6 +65,22 @@ export function AdminTLManagement() {
     }
   });
 
+  // Fetch territories
+  const { data: territories = [] } = useQuery({
+    queryKey: ['territories', regionId],
+    queryFn: async () => {
+      if (!regionId) return [];
+      const { data, error } = await supabase
+        .from('territories')
+        .select('*')
+        .eq('region_id', regionId)
+        .order('name');
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!regionId
+  });
+
   // Fetch TLs with profiles
   const { data: teamLeaders = [], isLoading } = useQuery({
     queryKey: ['team_leaders'],
@@ -60,7 +89,8 @@ export function AdminTLManagement() {
         .from('team_leaders')
         .select(`
           *,
-          region:regions(name, code)
+          region:regions(name, code),
+          territory:territories(name, code)
         `)
         .order('created_at', { ascending: false });
       
@@ -118,6 +148,7 @@ export function AdminTLManagement() {
         .insert({
           user_id: authData.user.id,
           region_id: regionId || null,
+          territory_id: territoryId || null,
           monthly_target: parseInt(target) || 0
         });
       
@@ -125,12 +156,14 @@ export function AdminTLManagement() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['team_leaders'] });
-      toast({ title: 'Team Leader created successfully' });
+      toast({ title: editingTL ? 'Team Leader updated successfully' : 'Team Leader created successfully' });
       setEmail('');
       setPassword('');
       setFullName('');
       setRegionId('');
+      setTerritoryId('');
       setTarget('');
+      setEditingTL(null);
       setIsOpen(false);
     },
     onError: (error: Error) => {
@@ -138,12 +171,78 @@ export function AdminTLManagement() {
     }
   });
 
-  const handleSubmit = () => {
-    if (!email || !password || !fullName) {
-      toast({ title: 'Please fill all required fields', variant: 'destructive' });
-      return;
+  // Update TL mutation
+  const updateTLMutation = useMutation({
+    mutationFn: async () => {
+      if (!editingTL) return;
+      
+      const { error } = await supabase
+        .from('team_leaders')
+        .update({
+          region_id: regionId || null,
+          territory_id: territoryId || null,
+          monthly_target: parseInt(target) || 0
+        })
+        .eq('id', editingTL.id);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['team_leaders'] });
+      toast({ title: 'Team Leader updated successfully' });
+      setRegionId('');
+      setTerritoryId('');
+      setTarget('');
+      setEditingTL(null);
+      setIsOpen(false);
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Error updating TL', description: error.message, variant: 'destructive' });
     }
-    createTLMutation.mutate();
+  });
+
+  // Delete TL mutation
+  const deleteTLMutation = useMutation({
+    mutationFn: async (tlId: string) => {
+      const { error } = await supabase
+        .from('team_leaders')
+        .delete()
+        .eq('id', tlId);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['team_leaders'] });
+      toast({ title: 'Team Leader deleted successfully' });
+      setDeletingTL(null);
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Error deleting TL', description: error.message, variant: 'destructive' });
+    }
+  });
+
+  const handleSubmit = () => {
+    if (editingTL) {
+      updateTLMutation.mutate();
+    } else {
+      if (!email || !password || !fullName) {
+        toast({ title: 'Please fill all required fields', variant: 'destructive' });
+        return;
+      }
+      createTLMutation.mutate();
+    }
+  };
+
+  const handleEdit = (tl: any) => {
+    setEditingTL(tl);
+    setRegionId(tl.region_id || '');
+    setTerritoryId(tl.territory_id || '');
+    setTarget(tl.monthly_target?.toString() || '');
+    setIsOpen(true);
+  };
+
+  const handleDelete = (tl: any) => {
+    setDeletingTL(tl);
   };
 
   return (
@@ -163,39 +262,45 @@ export function AdminTLManagement() {
           </DialogTrigger>
           <DialogContent className="glass border-border/50">
             <DialogHeader>
-              <DialogTitle>Create Team Leader</DialogTitle>
-              <DialogDescription>Add a new team leader account</DialogDescription>
+              <DialogTitle>{editingTL ? 'Edit Team Leader' : 'Create Team Leader'}</DialogTitle>
+              <DialogDescription>
+                {editingTL ? 'Update team leader details' : 'Add a new team leader account'}
+              </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 pt-4">
-              <div className="space-y-2">
-                <Label>Full Name *</Label>
-                <Input
-                  placeholder="John Doe"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  className="bg-secondary/50"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Email *</Label>
-                <Input
-                  type="email"
-                  placeholder="tl@company.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="bg-secondary/50"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Password *</Label>
-                <Input
-                  type="password"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="bg-secondary/50"
-                />
-              </div>
+              {!editingTL && (
+                <>
+                  <div className="space-y-2">
+                    <Label>Full Name *</Label>
+                    <Input
+                      placeholder="John Doe"
+                      value={fullName}
+                      onChange={(e) => setFullName(e.target.value)}
+                      className="bg-secondary/50"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Email *</Label>
+                    <Input
+                      type="email"
+                      placeholder="tl@company.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="bg-secondary/50"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Password *</Label>
+                    <Input
+                      type="password"
+                      placeholder="••••••••"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="bg-secondary/50"
+                    />
+                  </div>
+                </>
+              )}
               <div className="space-y-2">
                 <Label>Region</Label>
                 <Select value={regionId} onValueChange={setRegionId}>
@@ -206,6 +311,21 @@ export function AdminTLManagement() {
                     {regions.map(region => (
                       <SelectItem key={region.id} value={region.id}>
                         {region.name} ({region.code})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Territory</Label>
+                <Select value={territoryId} onValueChange={setTerritoryId} disabled={!regionId}>
+                  <SelectTrigger className="bg-secondary/50">
+                    <SelectValue placeholder={regionId ? "Select territory" : "Select region first"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {territories.map(territory => (
+                      <SelectItem key={territory.id} value={territory.id}>
+                        {territory.name} ({territory.code})
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -224,10 +344,12 @@ export function AdminTLManagement() {
               <Button 
                 className="w-full" 
                 onClick={handleSubmit}
-                disabled={createTLMutation.isPending}
+                disabled={createTLMutation.isPending || updateTLMutation.isPending}
               >
-                {createTLMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Create Team Leader
+                {(createTLMutation.isPending || updateTLMutation.isPending) && 
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                }
+                {editingTL ? 'Update Team Leader' : 'Create Team Leader'}
               </Button>
             </div>
           </DialogContent>
@@ -252,8 +374,10 @@ export function AdminTLManagement() {
                 <TableHead className="text-muted-foreground">Name</TableHead>
                 <TableHead className="text-muted-foreground">Email</TableHead>
                 <TableHead className="text-muted-foreground">Region</TableHead>
+                <TableHead className="text-muted-foreground">Territory</TableHead>
                 <TableHead className="text-muted-foreground">Target</TableHead>
                 <TableHead className="text-muted-foreground">Created</TableHead>
+                <TableHead className="text-muted-foreground text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -268,9 +392,36 @@ export function AdminTLManagement() {
                       <span className="text-muted-foreground">-</span>
                     )}
                   </TableCell>
+                  <TableCell>
+                    {tl.territory ? (
+                      <Badge variant="secondary">{tl.territory.code}</Badge>
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
+                  </TableCell>
                   <TableCell className="text-foreground">{tl.monthly_target}</TableCell>
                   <TableCell className="text-muted-foreground">
                     {new Date(tl.created_at).toLocaleDateString()}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleEdit(tl)}
+                        className="h-8 w-8 p-0"
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => handleDelete(tl)}
+                        className="h-8 w-8 p-0"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
@@ -278,6 +429,29 @@ export function AdminTLManagement() {
           </Table>
         )}
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deletingTL} onOpenChange={() => setDeletingTL(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Team Leader</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete {deletingTL?.profile?.full_name}? This action cannot be undone.
+              All associated data will be removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deletingTL && deleteTLMutation.mutate(deletingTL.id)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteTLMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
