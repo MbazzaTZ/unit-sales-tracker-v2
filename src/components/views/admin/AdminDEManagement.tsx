@@ -44,13 +44,13 @@ export const AdminDEManagement = () => {
   const [target, setTarget] = useState("");
   const queryClient = useQueryClient();
 
-  // Fetch Zones (contains territories JSON array)
+  // Fetch Zones
   const { data: zones = [] } = useQuery({
-    queryKey: ["zones-with-territories"],
+    queryKey: ["zones-de-management"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("zones")
-        .select("id, name, code, territories")
+        .select("id, name, code")
         .order("name");
 
       if (error) throw error;
@@ -58,20 +58,57 @@ export const AdminDEManagement = () => {
     },
   });
 
+  // Fetch Territories for selected zone
+  const { data: territories = [] } = useQuery({
+    queryKey: ["territories-for-zone", zoneId],
+    queryFn: async () => {
+      if (!zoneId) return [];
+      const { data, error } = await supabase
+        .from("territories")
+        .select("id, name, code")
+        .eq("region_id", zoneId)
+        .order("name");
+
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!zoneId,
+  });
+
   // Fetch DEs with profile join
-  const { data: des, isLoading } = useQuery({
+  const { data: des = [], isLoading } = useQuery({
     queryKey: ["distribution-executives"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("distribution_executives")
-        .select(`
-          *,
-          profile:profiles!distribution_executives_user_id_fkey(full_name, phone_number)
-        `)
+        .select("*")
         .order("created_at", { ascending: false });
 
-      if (error) throw error;
-      return data;
+      if (error) {
+        console.error("Error fetching DEs:", error);
+        throw error;
+      }
+
+      // Fetch profiles separately
+      if (data && data.length > 0) {
+        const userIds = data.map(de => de.user_id);
+        const { data: profiles, error: profileError } = await supabase
+          .from("profiles")
+          .select("id, full_name, phone_number")
+          .in("id", userIds);
+
+        if (profileError) {
+          console.error("Error fetching DE profiles:", profileError);
+        }
+
+        // Map profiles to DEs
+        return data.map(de => ({
+          ...de,
+          profile: profiles?.find(p => p.id === de.user_id)
+        }));
+      }
+
+      return data || [];
     },
   });
 
@@ -234,8 +271,7 @@ export const AdminDEManagement = () => {
     });
   };
 
-  const selectedZone = zones.find((z) => z.id === zoneId);
-  const territories = selectedZone?.territories || [];
+  // territories is now fetched from the query above
 
   // -----------------------------------
   // UI Starts Here
@@ -389,7 +425,7 @@ export const AdminDEManagement = () => {
             ) : (
               des.map((de: any) => {
                 const zone = zones.find((z) => z.id === de.zone_id);
-                const territory = zone?.territories?.find((t: any) => t.id === de.territory_id);
+                // Territory will be fetched if we need to display it
 
                 return (
                   <TableRow key={de.id}>
@@ -397,7 +433,7 @@ export const AdminDEManagement = () => {
                     <TableCell>{de.profile?.phone_number || "-"}</TableCell>
                     <TableCell>{zone?.name || "-"}</TableCell>
                     <TableCell>
-                      <Badge variant="outline">{territory?.name || "-"}</Badge>
+                      <Badge variant="outline">{de.territory_id || "-"}</Badge>
                     </TableCell>
                     <TableCell>
                       {de.monthly_target ? `$${Number(de.monthly_target).toLocaleString()}` : "-"}
