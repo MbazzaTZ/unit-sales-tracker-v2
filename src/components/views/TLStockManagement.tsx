@@ -41,19 +41,20 @@ import { useToast } from '@/hooks/use-toast';
 
 interface Stock {
   id: string;
-  stock_item_id: string;
-  quantity: number;
+  stock_id: string;
+  type: string;
   status: string;
   assigned_to_dsr?: string;
   assigned_to_team?: string;
+  assigned_to_tl?: string;
+  batch_id?: string;
   created_at: string;
-  stock_item?: {
-    name: string;
-    sku: string;
+  batch?: {
+    batch_number: string;
   };
   dsr?: {
     dsr_number: string;
-    profile?: {
+    profiles?: {
       full_name: string;
     };
   };
@@ -146,11 +147,11 @@ export function TLStockManagement() {
         .from('stock')
         .select(`
           *,
-          stock_item:stock_batches(name, sku),
-          dsr:dsrs(dsr_number, profile:profiles(full_name)),
-          team:teams(name)
+          batch:stock_batches(batch_number),
+          dsr:assigned_to_dsr(dsr_number, profiles:user_id(full_name)),
+          team:assigned_to_team(name)
         `)
-        .or(`assigned_to_tl.eq.${tlData.id},assigned_to_team.in.(${teamsData?.map(t => t.id).join(',') || 'null'})`)
+        .eq('assigned_to_tl', tlData.id)
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -176,7 +177,7 @@ export function TLStockManagement() {
     setAssigningStock(stock);
     setAssignFormData({
       dsr_id: '',
-      quantity: stock.quantity
+      quantity: 1 // Each stock item is 1 unit
     });
     setDialogOpen(true);
   }
@@ -194,22 +195,14 @@ export function TLStockManagement() {
       return;
     }
 
-    if (assignFormData.quantity <= 0 || assignFormData.quantity > assigningStock.quantity) {
-      toast({
-        variant: 'destructive',
-        title: 'Validation Error',
-        description: 'Invalid quantity',
-      });
-      return;
-    }
-
     setSubmitting(true);
     try {
       // Update stock assignment
       const updateData: any = {
-        quantity: assignFormData.quantity,
         status: 'assigned-dsr',
-        assigned_to_dsr: assignFormData.dsr_id
+        assigned_to_dsr: assignFormData.dsr_id,
+        assigned_by: user?.id,
+        date_assigned: new Date().toISOString()
       };
 
       const { error } = await supabase
@@ -248,11 +241,11 @@ export function TLStockManagement() {
     );
   }
 
-  const availableStock = stocks.filter(s => s.status === 'assigned-tl' || !s.assigned_to_dsr);
+  const availableStock = stocks.filter(s => s.status === 'assigned-tl' && !s.assigned_to_dsr);
   const assignedStock = stocks.filter(s => s.status === 'assigned-dsr' || s.status === 'assigned-team');
-  const stockInHand = stocks.filter(s => s.status === 'stock-in-hand');
-  const stockSold = stocks.filter(s => s.status === 'stock-sold');
-  const stockUnpaid = stocks.filter(s => s.status === 'stock-sold-unpaid');
+  const stockInHand = stocks.filter(s => s.status === 'in-hand');
+  const stockSold = stocks.filter(s => s.status === 'sold');
+  const stockUnpaid = stocks.filter(s => s.status === 'sold-unpaid');
 
   return (
     <div className="p-6 space-y-6">
@@ -270,7 +263,7 @@ export function TLStockManagement() {
             <CardTitle className="text-sm font-medium text-muted-foreground">Available Stock</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{availableStock.reduce((sum, s) => sum + s.quantity, 0)}</div>
+            <div className="text-2xl font-bold">{availableStock.length}</div>
             <p className="text-xs text-muted-foreground mt-1">{availableStock.length} items</p>
           </CardContent>
         </Card>
@@ -280,7 +273,7 @@ export function TLStockManagement() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {assignedStock.filter(s => s.status === 'assigned-dsr').reduce((sum, s) => sum + s.quantity, 0)}
+              {assignedStock.filter(s => s.status === 'assigned-dsr').length}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
               {assignedStock.filter(s => s.status === 'assigned-dsr').length} items
@@ -293,7 +286,7 @@ export function TLStockManagement() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {assignedStock.filter(s => s.status === 'assigned-team').reduce((sum, s) => sum + s.quantity, 0)}
+              {assignedStock.filter(s => s.status === 'assigned-team').length}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
               {assignedStock.filter(s => s.status === 'assigned-team').length} items
@@ -306,7 +299,7 @@ export function TLStockManagement() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {stockInHand.reduce((sum, s) => sum + s.quantity, 0)}
+              {stockInHand.length}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
               {stockInHand.length} items
@@ -319,7 +312,7 @@ export function TLStockManagement() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-green-600">
-              {stockSold.reduce((sum, s) => sum + s.quantity, 0)}
+              {stockSold.length}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
               {stockSold.length} items
@@ -332,7 +325,7 @@ export function TLStockManagement() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-orange-600">
-              {stockUnpaid.reduce((sum, s) => sum + s.quantity, 0)}
+              {stockUnpaid.length}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
               {stockUnpaid.length} items
@@ -357,8 +350,8 @@ export function TLStockManagement() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>SKU</TableHead>
-                  <TableHead>Item Name</TableHead>
+                  <TableHead>Stock ID</TableHead>
+                  <TableHead>Type</TableHead>
                   <TableHead>Quantity</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Actions</TableHead>
@@ -367,10 +360,10 @@ export function TLStockManagement() {
               <TableBody>
                 {availableStock.map((stock) => (
                   <TableRow key={stock.id}>
-                    <TableCell className="font-mono text-sm">{stock.stock_item?.sku || 'N/A'}</TableCell>
-                    <TableCell className="font-medium">{stock.stock_item?.name || 'N/A'}</TableCell>
+                    <TableCell className="font-mono text-sm">{stock.stock_id}</TableCell>
+                    <TableCell className="font-medium">{stock.type}</TableCell>
                     <TableCell>
-                      <Badge variant="outline">{stock.quantity}</Badge>
+                      <Badge variant="outline">1</Badge>
                     </TableCell>
                     <TableCell>
                       <Badge variant="secondary">{stock.status}</Badge>
@@ -408,8 +401,8 @@ export function TLStockManagement() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>SKU</TableHead>
-                  <TableHead>Item Name</TableHead>
+                  <TableHead>Stock ID</TableHead>
+                  <TableHead>Type</TableHead>
                   <TableHead>Quantity</TableHead>
                   <TableHead>Assigned To</TableHead>
                   <TableHead>Status</TableHead>
@@ -419,15 +412,15 @@ export function TLStockManagement() {
               <TableBody>
                 {assignedStock.map((stock) => (
                   <TableRow key={stock.id}>
-                    <TableCell className="font-mono text-sm">{stock.stock_item?.sku || 'N/A'}</TableCell>
-                    <TableCell className="font-medium">{stock.stock_item?.name || 'N/A'}</TableCell>
+                    <TableCell className="font-mono text-sm">{stock.stock_id}</TableCell>
+                    <TableCell className="font-medium">{stock.type}</TableCell>
                     <TableCell>
-                      <Badge variant="outline">{stock.quantity}</Badge>
+                      <Badge variant="outline">1</Badge>
                     </TableCell>
                     <TableCell>
                       {stock.status === 'assigned-dsr' && stock.dsr ? (
                         <div>
-                          <div className="font-medium">{stock.dsr.profile?.full_name || 'N/A'}</div>
+                          <div className="font-medium">{stock.dsr.profiles?.full_name || 'N/A'}</div>
                           <div className="text-xs text-muted-foreground">{stock.dsr.dsr_number}</div>
                         </div>
                       ) : stock.status === 'assigned-team' && stock.team ? (
@@ -470,8 +463,8 @@ export function TLStockManagement() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>SKU</TableHead>
-                  <TableHead>Item Name</TableHead>
+                  <TableHead>Stock ID</TableHead>
+                  <TableHead>Type</TableHead>
                   <TableHead>Quantity</TableHead>
                   <TableHead>Assigned To</TableHead>
                   <TableHead>Status</TableHead>
@@ -481,15 +474,15 @@ export function TLStockManagement() {
               <TableBody>
                 {stockUnpaid.map((stock) => (
                   <TableRow key={stock.id}>
-                    <TableCell className="font-mono text-sm">{stock.stock_item?.sku || 'N/A'}</TableCell>
-                    <TableCell className="font-medium">{stock.stock_item?.name || 'N/A'}</TableCell>
+                    <TableCell className="font-mono text-sm">{stock.stock_id}</TableCell>
+                    <TableCell className="font-medium">{stock.type}</TableCell>
                     <TableCell>
-                      <Badge variant="outline">{stock.quantity}</Badge>
+                      <Badge variant="outline">1</Badge>
                     </TableCell>
                     <TableCell>
                       {stock.dsr ? (
                         <div>
-                          <div className="font-medium">{stock.dsr.profile?.full_name || 'N/A'}</div>
+                          <div className="font-medium">{stock.dsr.profiles?.full_name || 'N/A'}</div>
                           <div className="text-xs text-muted-foreground">{stock.dsr.dsr_number}</div>
                         </div>
                       ) : stock.team ? (
@@ -524,26 +517,18 @@ export function TLStockManagement() {
           <form onSubmit={handleAssignSubmit}>
             <div className="space-y-4 py-4">
               <div className="space-y-2">
-                <Label>Stock Item</Label>
+                <Label>Stock ID</Label>
                 <Input
-                  value={assigningStock?.stock_item?.name || 'N/A'}
+                  value={assigningStock?.stock_id || 'N/A'}
                   disabled
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="quantity">Quantity *</Label>
+                <Label>Stock Type</Label>
                 <Input
-                  id="quantity"
-                  type="number"
-                  min="1"
-                  max={assigningStock?.quantity || 0}
-                  value={assignFormData.quantity}
-                  onChange={(e) => setAssignFormData({ ...assignFormData, quantity: parseInt(e.target.value) })}
-                  required
+                  value={assigningStock?.type || 'N/A'}
+                  disabled
                 />
-                <p className="text-xs text-muted-foreground">
-                  Available: {assigningStock?.quantity || 0}
-                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="dsr">Assign to DSR *</Label>

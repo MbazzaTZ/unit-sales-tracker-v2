@@ -196,7 +196,7 @@ export function AdminStockManagement() {
         stock_id: item.stock_id,
         type: item.type,
         batch_id: batchId,
-        status: 'available'
+        status: 'unassigned'
       }));
 
       const { error } = await supabase
@@ -226,6 +226,7 @@ export function AdminStockManagement() {
     const stockData: any = {
       stock_id: manualStockId,
       type: manualType,
+      status: 'unassigned' // Default status
     };
 
     // Add optional fields
@@ -234,6 +235,8 @@ export function AdminStockManagement() {
     if (selectedTL && selectedTL !== 'none') {
       stockData.assigned_to_tl = selectedTL;
       stockData.status = 'assigned-tl';
+      stockData.assigned_by = user?.id;
+      stockData.date_assigned = new Date().toISOString();
     }
     if (selectedRegion && selectedRegion !== 'none') stockData.region_id = selectedRegion;
     if (territory) stockData.territory = territory;
