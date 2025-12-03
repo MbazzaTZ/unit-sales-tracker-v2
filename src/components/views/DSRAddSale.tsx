@@ -200,15 +200,29 @@ export function DSRAddSale({ onNavigate }: DSRAddSaleProps) {
         stockTypeType: typeof stockType,
         stock: stock,
         selectedStockId,
+        stockItemType: stock?.name,
       });
 
       // Extract short code from stockType (handles both "FS" and "Full Set (FS)" formats)
       let saleType: string = stockType;
-      if (stockType.includes('(')) {
-        // Extract code from parentheses: "Full Set (FS)" -> "FS"
-        const match = stockType.match(/\(([^)]+)\)/);
-        saleType = match ? match[1] : stockType;
+      
+      // If stockType is empty or invalid, try to extract from stock item's type
+      if (!saleType && stock?.name) {
+        saleType = stock.name;
       }
+      
+      if (saleType.includes('(')) {
+        // Extract code from parentheses: "Full Set (FS)" -> "FS"
+        const match = saleType.match(/\(([^)]+)\)/);
+        saleType = match ? match[1] : saleType;
+      } else if (saleType.toLowerCase().includes('full set')) {
+        saleType = 'FS';
+      } else if (saleType.toLowerCase().includes('decoder only')) {
+        saleType = 'DO';
+      } else if (saleType.toLowerCase().includes('digital virtual')) {
+        saleType = 'DVS';
+      }
+      
       // Handle DVS -> DO conversion
       if (saleType === 'DVS') {
         saleType = 'DO';
