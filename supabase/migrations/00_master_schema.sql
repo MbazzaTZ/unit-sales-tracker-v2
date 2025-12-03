@@ -318,13 +318,16 @@ CREATE INDEX idx_notifications_created_at ON public.notifications(created_at);
 -- STEP 10: HELPER FUNCTIONS
 -- ============================================
 
+-- Drop existing function if it exists with different signature
+DROP FUNCTION IF EXISTS public.has_role(uuid, app_role) CASCADE;
+
 -- Function to check if user has a specific role
-CREATE OR REPLACE FUNCTION public.has_role(user_id UUID, check_role app_role)
+CREATE FUNCTION public.has_role(p_user_id UUID, p_check_role app_role)
 RETURNS BOOLEAN AS $$
 BEGIN
   RETURN EXISTS (
     SELECT 1 FROM public.user_roles
-    WHERE user_roles.user_id = $1 AND user_roles.role = $2
+    WHERE user_roles.user_id = p_user_id AND user_roles.role = p_check_role
   );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
