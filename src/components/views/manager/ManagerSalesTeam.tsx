@@ -40,10 +40,25 @@ interface DSRDetails {
   pendingCommission: number;
 }
 
+interface TSMPerformance {
+  managerId: string;
+  managerName: string;
+  managerType: 'TSM' | 'RSM';
+  zone: string;
+  territories: string[];
+  totalTLs: number;
+  totalDSRs: number;
+  totalSales: number;
+  totalRevenue: number;
+  target: number;
+  achievement: number;
+}
+
 export default function ManagerSalesTeam() {
   const [loading, setLoading] = useState(true);
   const [teamPerformance, setTeamPerformance] = useState<TeamPerformance[]>([]);
   const [tlPerformance, setTLPerformance] = useState<TLPerformance[]>([]);
+  const [tsmPerformance, setTSMPerformance] = useState<TSMPerformance[]>([]);
   const [dsrDetails, setDSRDetails] = useState<DSRDetails[]>([]);
 
   useEffect(() => {
@@ -216,6 +231,85 @@ export default function ManagerSalesTeam() {
       }
 
       setDSRDetails(dsrDetailsList);
+
+      // Fetch TSM/RSM performance
+      const { data: managers, error: managerError } = await supabase
+        .from('managers')
+        .select(`
+          id,
+          manager_type,
+          zone_id,
+          territory_ids,
+          profiles!managers_user_id_fkey (
+            full_name
+          ),
+          zones!managers_zone_id_fkey (
+            name
+          )
+        `);
+
+      if (managerError) throw managerError;
+
+      const tsmList: TSMPerformance[] = [];
+
+      for (const manager of managers || []) {
+        // Get TLs under this manager's territories
+        const territoryIds = manager.territory_ids || [];
+        
+        let managerTLs: any[] = [];
+        if (territoryIds.length > 0) {
+          const { data: tls } = await supabase
+            .from('team_leaders')
+            .select('id')
+            .in('territory_id', territoryIds);
+          
+          managerTLs = tls || [];
+        }
+
+        // Get DSRs under these TLs
+        const tlIds = managerTLs.map(tl => tl.id);
+        let managerDSRs: any[] = [];
+        if (tlIds.length > 0) {
+          const { data: dsrsData } = await supabase
+            .from('dsrs')
+            .select('id')
+            .in('tl_id', tlIds);
+          
+          managerDSRs = dsrsData || [];
+        }
+
+        // Calculate total sales and revenue for this manager's DSRs
+        const dsrIds = managerDSRs.map(d => d.id);
+        const managerSales = sales?.filter(s => dsrIds.includes(s.dsr_id)) || [];
+        const totalRevenue = managerSales.reduce((sum, s) => sum + calculateRevenue(s.sale_type), 0);
+
+        // Get territory names
+        let territoryNames: string[] = [];
+        if (territoryIds.length > 0) {
+          const { data: territories } = await supabase
+            .from('territories')
+            .select('name')
+            .in('id', territoryIds);
+          
+          territoryNames = territories?.map(t => t.name) || [];
+        }
+
+        tsmList.push({
+          managerId: manager.id,
+          managerName: manager.profiles?.full_name || 'Unknown',
+          managerType: manager.manager_type as 'TSM' | 'RSM',
+          zone: manager.zones?.name || 'N/A',
+          territories: territoryNames,
+          totalTLs: managerTLs.length,
+          totalDSRs: managerDSRs.length,
+          totalSales: managerSales.length,
+          totalRevenue,
+          target: 500, // Default target, can be made configurable
+          achievement: 500 > 0 ? (managerSales.length / 500) * 100 : 0
+        });
+      }
+
+      setTSMPerformance(tsmList);
     } catch (error) {
       console.error('Error fetching sales team data:', error);
     } finally {
@@ -242,6 +336,7 @@ export default function ManagerSalesTeam() {
         <TabsList>
           <TabsTrigger value="teams">Teams</TabsTrigger>
           <TabsTrigger value="tls">Team Leaders</TabsTrigger>
+          <TabsTrigger value="tsm">TSM/RSM</TabsTrigger>
           <TabsTrigger value="dsrs">DSRs</TabsTrigger>
         </TabsList>
 
@@ -355,6 +450,125 @@ export default function ManagerSalesTeam() {
                       <TableCell>TZS {tl.totalRevenue.toLocaleString()}</TableCell>
                     </TableRow>
                   ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* TSM/RSM Performance */}
+        <TabsContent value="tsm" className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-3">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Total Managers</CardTitle>
+                <Target className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{tsmPerformance.length}</div>
+                <p className="text-xs text-muted-foreground">
+                  TSM: {tsmPerformance.filter(m => m.managerType === 'TSM').length} | 
+                  RSM: {tsmPerformance.filter(m => m.managerType === 'RSM').length}
+                </p>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Total Sales</CardTitle>
+                <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {tsmPerformance.reduce((sum, m) => sum + m.totalSales, 0)}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+                <TrendingUp className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  TZS {tsmPerformance.reduce((sum, m) => sum + m.totalRevenue, 0).toLocaleString()}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>TSM/RSM Performance & Territories</CardTitle>
+              <p className="text-sm text-muted-foreground">Territory Sales Managers and Regional Sales Managers</p>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Zone</TableHead>
+                    <TableHead>Territories</TableHead>
+                    <TableHead>TLs</TableHead>
+                    <TableHead>DSRs</TableHead>
+                    <TableHead>Sales</TableHead>
+                    <TableHead>Target</TableHead>
+                    <TableHead>Achievement</TableHead>
+                    <TableHead>Revenue</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {tsmPerformance.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
+                        No TSM/RSM data available
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    tsmPerformance.map((manager) => (
+                      <TableRow key={manager.managerId}>
+                        <TableCell className="font-medium">{manager.managerName}</TableCell>
+                        <TableCell>
+                          <Badge variant={manager.managerType === 'TSM' ? 'default' : 'secondary'}>
+                            {manager.managerType}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{manager.zone}</TableCell>
+                        <TableCell>
+                          <div className="max-w-[200px]">
+                            {manager.territories.length > 0 ? (
+                              <div className="text-xs">
+                                {manager.territories.slice(0, 2).join(', ')}
+                                {manager.territories.length > 2 && ` +${manager.territories.length - 2} more`}
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground">None</span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>{manager.totalTLs}</TableCell>
+                        <TableCell>{manager.totalDSRs}</TableCell>
+                        <TableCell className="font-semibold">{manager.totalSales}</TableCell>
+                        <TableCell>{manager.target}</TableCell>
+                        <TableCell>
+                          <Badge 
+                            variant={
+                              manager.achievement >= 100 ? 'default' : 
+                              manager.achievement >= 75 ? 'secondary' : 
+                              'destructive'
+                            }
+                          >
+                            {manager.achievement.toFixed(1)}%
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="font-semibold">
+                          TZS {manager.totalRevenue.toLocaleString()}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
                 </TableBody>
               </Table>
             </CardContent>
