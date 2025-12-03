@@ -8,11 +8,11 @@ import { MetricCard } from '@/components/dashboard/MetricCard';
 
 interface DashboardMetrics {
   totalSales: number;
-  totalRevenue: number;
   activeDSRs: number;
   stockInHand: number;
   monthlySales: number;
-  monthlyRevenue: number;
+  monthlyTarget: number;
+  salesGap: number;
 }
 
 export default function ManagerDashboard() {
@@ -20,13 +20,13 @@ export default function ManagerDashboard() {
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState<DashboardMetrics>({
     totalSales: 0,
-    totalRevenue: 0,
     activeDSRs: 0,
     stockInHand: 0,
     monthlySales: 0,
-    monthlyRevenue: 0
+    monthlyTarget: 500,
+    salesGap: 0
   });
-  const [weeklyData, setWeeklyData] = useState<{ day: string; sales: number }[]>([]);
+  const [monthToDateData, setMonthToDateData] = useState<{ date: string; actual: number; target: number; gap: number }[]>([]);
 
   useEffect(() => {
     fetchDashboardData();
@@ -63,8 +63,6 @@ export default function ManagerDashboard() {
         new Date(sale.created_at!) >= startOfMonth
       ) || [];
 
-      const monthlyRevenue = monthlySales.reduce((sum, sale) => sum + calculateRevenue(sale.sale_type), 0);
-
       // Get active DSRs count
       const { count: dsrCount, error: dsrError } = await supabase
         .from('dsrs')
@@ -82,40 +80,52 @@ export default function ManagerDashboard() {
 
       const stockInHand = stock?.length || 0;
 
-      // Calculate weekly sales for chart
-      const last7Days = Array.from({ length: 7 }, (_, i) => {
-        const date = new Date();
-        date.setDate(date.getDate() - (6 - i));
-        return date;
-      });
+      // Calculate month-to-date trend with target vs actual
+      const today = new Date();
+      const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+      const currentDay = today.getDate();
+      const monthlyTarget = 500; // Can be made configurable per manager
+      const dailyTarget = monthlyTarget / daysInMonth;
 
-      const weeklyData = last7Days.map(date => {
-        const dayStart = new Date(date);
+      const monthToDateTrend: { date: string; actual: number; target: number; gap: number }[] = [];
+      let cumulativeActual = 0;
+
+      for (let day = 1; day <= currentDay; day++) {
+        const dayDate = new Date(today.getFullYear(), today.getMonth(), day);
+        const dayStart = new Date(dayDate);
         dayStart.setHours(0, 0, 0, 0);
-        const dayEnd = new Date(date);
+        const dayEnd = new Date(dayDate);
         dayEnd.setHours(23, 59, 59, 999);
 
-        const daySales = sales?.filter(sale => {
+        const daySales = monthlySales.filter(sale => {
           const saleDate = new Date(sale.created_at!);
           return saleDate >= dayStart && saleDate <= dayEnd;
-        }).length || 0;
+        }).length;
 
-        return {
-          day: date.toLocaleDateString('en-US', { weekday: 'short' }),
-          sales: daySales
-        };
-      });
+        cumulativeActual += daySales;
+        const cumulativeTarget = Math.round(dailyTarget * day);
+        const gap = cumulativeActual - cumulativeTarget;
+
+        monthToDateTrend.push({
+          date: dayDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+          actual: cumulativeActual,
+          target: cumulativeTarget,
+          gap: gap
+        });
+      }
+
+      const salesGap = monthlySales.length - Math.round(dailyTarget * currentDay);
 
       setMetrics({
         totalSales: sales?.length || 0,
-        totalRevenue,
         activeDSRs: dsrCount || 0,
         stockInHand,
         monthlySales: monthlySales.length,
-        monthlyRevenue
+        monthlyTarget,
+        salesGap
       });
 
-      setWeeklyData(weeklyData);
+      setMonthToDateData(monthToDateTrend);
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
     } finally {
@@ -139,17 +149,11 @@ export default function ManagerDashboard() {
       </div>
 
       {/* Key Metrics */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         <MetricCard
           title="Total Sales"
           value={metrics.totalSales.toString()}
           icon={TrendingUp}
-          trend={{ value: 0, isPositive: true }}
-        />
-        <MetricCard
-          title="Total Revenue"
-          value={`TZS ${metrics.totalRevenue.toLocaleString()}`}
-          icon={DollarSign}
           trend={{ value: 0, isPositive: true }}
         />
         <MetricCard
@@ -166,41 +170,80 @@ export default function ManagerDashboard() {
         />
       </div>
 
-      {/* Monthly Performance - Added descriptive text here instead */}
-      <div className="grid gap-4 md:grid-cols-2">
+      {/* Monthly Performance Summary */}
+      <div className="grid gap-4 md:grid-cols-3">
         <Card>
           <CardHeader>
-            <CardTitle>Monthly Sales</CardTitle>
+            <CardTitle>Monthly Target</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">{metrics.monthlySales}</div>
-            <p className="text-sm text-muted-foreground">Sales this month</p>
+            <div className="text-3xl font-bold">{metrics.monthlyTarget}</div>
+            <p className="text-sm text-muted-foreground">Sales target for this month</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Monthly Revenue</CardTitle>
+            <CardTitle>Actual Sales (MTD)</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">TZS {metrics.monthlyRevenue.toLocaleString()}</div>
-            <p className="text-sm text-muted-foreground">Revenue this month</p>
+            <div className="text-3xl font-bold">{metrics.monthlySales}</div>
+            <p className="text-sm text-muted-foreground">Month-to-date sales</p>
+          </CardContent>
+        </Card>
+
+        <Card className={metrics.salesGap >= 0 ? 'border-green-500' : 'border-red-500'}>
+          <CardHeader>
+            <CardTitle>Gap</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className={`text-3xl font-bold ${metrics.salesGap >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {metrics.salesGap >= 0 ? '+' : ''}{metrics.salesGap}
+            </div>
+            <p className="text-sm text-muted-foreground">
+              {metrics.salesGap >= 0 ? 'Ahead of target' : 'Behind target'}
+            </p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Weekly Sales Chart */}
+      {/* Target vs Actual Trend (Month to Date) */}
       <Card>
         <CardHeader>
-          <CardTitle>Weekly Sales Trend</CardTitle>
+          <CardTitle>Target vs Actual Sales Trend (Month-to-Date)</CardTitle>
+          <p className="text-sm text-muted-foreground">Daily cumulative progress with gap analysis</p>
         </CardHeader>
         <CardContent>
-          <SalesChart 
-            data={weeklyData.map(item => ({ 
-              date: item.day, 
-              amount: item.sales 
-            }))} 
-          />
+          <div className="space-y-4">
+            <div className="grid grid-cols-3 gap-4 mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 bg-blue-500 rounded"></div>
+                <span className="text-sm">Target</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 bg-green-500 rounded"></div>
+                <span className="text-sm">Actual</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-4 h-4 bg-orange-500 rounded"></div>
+                <span className="text-sm">Gap</span>
+              </div>
+            </div>
+            <div className="max-h-[400px] overflow-y-auto">
+              <div className="space-y-2">
+                {monthToDateData.map((day, index) => (
+                  <div key={index} className="grid grid-cols-4 gap-4 p-2 border-b">
+                    <div className="text-sm font-medium">{day.date}</div>
+                    <div className="text-sm text-blue-600 font-semibold">Target: {day.target}</div>
+                    <div className="text-sm text-green-600 font-semibold">Actual: {day.actual}</div>
+                    <div className={`text-sm font-semibold ${day.gap >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      Gap: {day.gap >= 0 ? '+' : ''}{day.gap}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
