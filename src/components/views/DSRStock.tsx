@@ -102,6 +102,8 @@ export function DSRStock({ onNavigate }: DSRStockProps = {}) {
       setDsrId(dsrData.id);
 
       // Fetch stock assigned to this DSR
+      console.log('Fetching stock for DSR ID:', dsrData.id);
+      
       const { data: stockData, error: stockError } = await supabase
         .from('stock')
         .select(`
@@ -120,7 +122,12 @@ export function DSRStock({ onNavigate }: DSRStockProps = {}) {
         .eq('assigned_to_dsr', dsrData.id)
         .order('created_at', { ascending: false });
 
-      if (stockError) throw stockError;
+      console.log('Stock query result:', { stockData, stockError });
+      
+      if (stockError) {
+        console.error('Stock query error details:', stockError);
+        throw stockError;
+      }
 
       // Get unique assigned_by user IDs
       const assignedByIds = [...new Set(stockData?.map(s => s.assigned_by).filter(Boolean))];
@@ -151,12 +158,19 @@ export function DSRStock({ onNavigate }: DSRStockProps = {}) {
       }));
 
       // All assigned-dsr stock is available for sale (no separate new/accepted states)
+      console.log('Transformed stock items:', transformedStock);
       setNewStockAssigned([]);
       setMyStock(transformedStock);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching stock data:', error);
-      toast.error('Failed to load stock data');
+      console.error('Error details:', {
+        message: error?.message,
+        details: error?.details,
+        hint: error?.hint,
+        code: error?.code
+      });
+      toast.error('Failed to load stock data: ' + (error?.message || 'Unknown error'));
     } finally {
       setLoading(false);
     }
