@@ -74,6 +74,15 @@ export function AdminStockManagement() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  // Get current user
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      return user;
+    }
+  });
+
   // Fetch stock
   const { data: stock = [], isLoading } = useQuery({
     queryKey: ['stock'],
@@ -82,7 +91,15 @@ export function AdminStockManagement() {
         .from('stock')
         .select(`
           *,
-          batch:stock_batches(batch_number)
+          batch:stock_batches!stock_batch_id_fkey (
+            batch_number
+          ),
+          assigned_tl:team_leaders!stock_assigned_to_tl_fkey (
+            id,
+            profiles!team_leaders_user_id_fkey (
+              full_name
+            )
+          )
         `)
         .order('created_at', { ascending: false });
       
@@ -114,7 +131,9 @@ export function AdminStockManagement() {
         .select(`
           id,
           user_id,
-          profiles:user_id(full_name)
+          profiles!team_leaders_user_id_fkey (
+            full_name
+          )
         `)
         .order('created_at', { ascending: false });
       
@@ -167,6 +186,8 @@ export function AdminStockManagement() {
       sub_territory?: string;
       batch_id?: string;
       status?: string;
+      assigned_by?: string;
+      date_assigned?: string;
     }) => {
       const { error } = await supabase
         .from('stock')
@@ -239,7 +260,7 @@ export function AdminStockManagement() {
     if (selectedTL && selectedTL !== 'none') {
       stockData.assigned_to_tl = selectedTL;
       stockData.status = 'assigned-tl';
-      stockData.assigned_by = user?.id;
+      stockData.assigned_by = currentUser?.id;
       stockData.date_assigned = new Date().toISOString();
     }
     if (selectedRegion && selectedRegion !== 'none') stockData.region_id = selectedRegion;
@@ -308,15 +329,21 @@ export function AdminStockManagement() {
     }
   };
 
+  // Calculate stats
+  const totalStock = stock.length;
+  const unassignedStock = stock.filter(s => s.status === 'unassigned').length;
+  const assignedStock = stock.filter(s => s.status?.startsWith('assigned')).length;
+  const soldStock = stock.filter(s => s.status?.startsWith('sold')).length;
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 p-6">
       {/* Header */}
       <div className="glass rounded-xl p-6 border border-border/50">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
               <Package className="h-7 w-7 text-primary" />
-              Stock Management
+              Admin Stock Management
             </h1>
             <p className="text-muted-foreground mt-1">Manage inventory and stock assignments</p>
           </div>
@@ -369,6 +396,7 @@ export function AdminStockManagement() {
                       value={manualStockId}
                       onChange={(e) => setManualStockId(e.target.value)}
                       className="bg-secondary/50"
+                      required
                     />
                   </div>
                 </div>
@@ -381,7 +409,7 @@ export function AdminStockManagement() {
                       <SelectValue placeholder="Select Team Leader" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">None</SelectItem>
+                      <SelectItem value="none">None (Keep Unassigned)</SelectItem>
                       {teamLeaders.map((tl: any) => (
                         <SelectItem key={tl.id} value={tl.id}>
                           {tl.profiles?.full_name || 'Unknown TL'}
@@ -392,7 +420,7 @@ export function AdminStockManagement() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Assign Regional</Label>
+                  <Label>Assign Region (Optional)</Label>
                   <Select value={selectedRegion} onValueChange={setSelectedRegion}>
                     <SelectTrigger className="bg-secondary/50">
                       <SelectValue placeholder="Select Region" />
@@ -410,7 +438,7 @@ export function AdminStockManagement() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label>Assign Territory</Label>
+                    <Label>Territory (Optional)</Label>
                     <Input
                       placeholder="e.g., North"
                       value={territory}
@@ -419,7 +447,7 @@ export function AdminStockManagement() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label>Assign to Sub Territory</Label>
+                    <Label>Sub Territory (Optional)</Label>
                     <Input
                       placeholder="e.g., Downtown"
                       value={subTerritory}
@@ -456,17 +484,18 @@ export function AdminStockManagement() {
               </DialogHeader>
               <div className="space-y-4 pt-4">
                 <div className="space-y-2">
-                  <Label>Batch Number</Label>
+                  <Label>Batch Number <span className="text-destructive">*</span></Label>
                   <Input
                     placeholder="e.g., B-2024-12"
                     value={batchNumber}
                     onChange={(e) => setBatchNumber(e.target.value)}
                     className="bg-secondary/50"
+                    required
                   />
                 </div>
                 
                 <div className="space-y-2">
-                  <Label>CSV File</Label>
+                  <Label>CSV File <span className="text-destructive">*</span></Label>
                   <div 
                     className="border-2 border-dashed border-border rounded-lg p-8 text-center cursor-pointer hover:border-primary/50 transition-colors"
                     onClick={() => fileInputRef.current?.click()}
@@ -477,12 +506,13 @@ export function AdminStockManagement() {
                       <div className="space-y-2">
                         <Check className="h-8 w-8 mx-auto text-success" />
                         <p className="text-foreground font-medium">{csvData.length} items ready</p>
+                        <p className="text-xs text-muted-foreground">Click to change file</p>
                       </div>
                     ) : (
                       <div className="space-y-2">
                         <FileSpreadsheet className="h-8 w-8 mx-auto text-muted-foreground" />
                         <p className="text-muted-foreground">Click to upload CSV</p>
-                        <p className="text-xs text-muted-foreground">Columns: stock_id, type</p>
+                        <p className="text-xs text-muted-foreground">Required columns: stock_id, type</p>
                       </div>
                     )}
                     <input
@@ -526,9 +556,11 @@ export function AdminStockManagement() {
                 <Button 
                   className="w-full" 
                   onClick={handleBatchUpload}
-                  disabled={bulkAddStockMutation.isPending || csvData.length === 0}
+                  disabled={bulkAddStockMutation.isPending || csvData.length === 0 || createBatchMutation.isPending}
                 >
-                  {bulkAddStockMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {(bulkAddStockMutation.isPending || createBatchMutation.isPending) && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
                   Upload {csvData.length} Items
                 </Button>
               </div>
@@ -541,35 +573,37 @@ export function AdminStockManagement() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="glass rounded-xl p-4 border border-border/50">
           <p className="text-sm text-muted-foreground">Total Stock</p>
-          <p className="text-2xl font-bold text-foreground">{stock.length}</p>
+          <p className="text-2xl font-bold text-foreground">{totalStock}</p>
+          <p className="text-xs text-muted-foreground mt-1">All inventory items</p>
         </div>
         <div className="glass rounded-xl p-4 border border-border/50">
           <p className="text-sm text-muted-foreground">Unassigned</p>
-          <p className="text-2xl font-bold text-info">{stock.filter(s => s.status === 'unassigned').length}</p>
+          <p className="text-2xl font-bold text-info">{unassignedStock}</p>
+          <p className="text-xs text-muted-foreground mt-1">Available for assignment</p>
         </div>
         <div className="glass rounded-xl p-4 border border-border/50">
           <p className="text-sm text-muted-foreground">Assigned</p>
-          <p className="text-2xl font-bold text-warning">
-            {stock.filter(s => s.status?.startsWith('assigned')).length}
-          </p>
+          <p className="text-2xl font-bold text-warning">{assignedStock}</p>
+          <p className="text-xs text-muted-foreground mt-1">To TLs/Teams/DSRs</p>
         </div>
         <div className="glass rounded-xl p-4 border border-border/50">
           <p className="text-sm text-muted-foreground">Sold</p>
-          <p className="text-2xl font-bold text-success">
-            {stock.filter(s => s.status?.startsWith('sold')).length}
-          </p>
+          <p className="text-2xl font-bold text-success">{soldStock}</p>
+          <p className="text-xs text-muted-foreground mt-1">Completed transactions</p>
         </div>
       </div>
 
       {/* Stock Table */}
       <div className="glass rounded-xl border border-border/50">
         <div className="p-5 border-b border-border/50">
-          <h2 className="text-lg font-semibold text-foreground">All Stock</h2>
+          <h2 className="text-lg font-semibold text-foreground">All Stock Items</h2>
+          <p className="text-sm text-muted-foreground">Total: {totalStock} items</p>
         </div>
         
         {isLoading ? (
           <div className="p-8 text-center">
             <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
+            <p className="text-muted-foreground mt-2">Loading stock data...</p>
           </div>
         ) : stock.length === 0 ? (
           <div className="p-8 text-center">
@@ -578,34 +612,55 @@ export function AdminStockManagement() {
             <p className="text-sm text-muted-foreground">Add stock manually or upload a CSV</p>
           </div>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow className="border-border/50 hover:bg-transparent">
-                <TableHead className="text-muted-foreground">Stock ID</TableHead>
-                <TableHead className="text-muted-foreground">Type</TableHead>
-                <TableHead className="text-muted-foreground">Batch</TableHead>
-                <TableHead className="text-muted-foreground">Status</TableHead>
-                <TableHead className="text-muted-foreground">Created</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {stock.map((item) => (
-                <TableRow key={item.id} className="border-border/50 hover:bg-secondary/30">
-                  <TableCell className="font-mono font-medium text-foreground">{item.stock_id}</TableCell>
-                  <TableCell className="text-foreground">{item.type}</TableCell>
-                  <TableCell className="text-muted-foreground">{item.batch?.batch_number || '-'}</TableCell>
-                  <TableCell>
-                    <Badge className={cn('font-medium', statusConfig[item.status || 'unassigned']?.className)}>
-                      {statusConfig[item.status || 'unassigned']?.label}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {new Date(item.created_at).toLocaleDateString()}
-                  </TableCell>
+          <div className="overflow-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="border-border/50 hover:bg-transparent">
+                  <TableHead className="text-muted-foreground">Stock ID</TableHead>
+                  <TableHead className="text-muted-foreground">Type</TableHead>
+                  <TableHead className="text-muted-foreground">Batch</TableHead>
+                  <TableHead className="text-muted-foreground">Assigned To</TableHead>
+                  <TableHead className="text-muted-foreground">Status</TableHead>
+                  <TableHead className="text-muted-foreground">Created</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {stock.map((item: any) => (
+                  <TableRow key={item.id} className="border-border/50 hover:bg-secondary/30">
+                    <TableCell className="font-mono font-medium text-foreground">
+                      {item.stock_id || 'N/A'}
+                    </TableCell>
+                    <TableCell className="text-foreground">
+                      <Badge variant="outline">{item.type}</Badge>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {item.batch?.batch_number || '-'}
+                    </TableCell>
+                    <TableCell>
+                      {item.assigned_tl?.profiles?.full_name ? (
+                        <div className="flex flex-col">
+                          <span className="text-sm font-medium">{item.assigned_tl.profiles.full_name}</span>
+                          <span className="text-xs text-muted-foreground">Team Leader</span>
+                        </div>
+                      ) : item.assigned_to_tl ? (
+                        <span className="text-sm text-muted-foreground">TL: {item.assigned_to_tl.substring(0, 8)}...</span>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge className={cn('font-medium', statusConfig[item.status || 'unassigned']?.className)}>
+                        {statusConfig[item.status || 'unassigned']?.label}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-sm">
+                      {item.created_at ? new Date(item.created_at).toLocaleDateString() : 'N/A'}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         )}
       </div>
     </div>

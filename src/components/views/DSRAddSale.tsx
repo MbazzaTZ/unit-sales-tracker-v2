@@ -462,38 +462,41 @@ export function DSRAddSale({ onNavigate }: DSRAddSaleProps) {
                     <CreditCard className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
                       id="manualSerialNumber"
-                      placeholder="Enter serial number manually"
+                      placeholder="Enter serial number (e.g., SN123456)"
                       value={manualSerialNumber}
                       onChange={(e) => setManualSerialNumber(e.target.value)}
                       className="pl-9"
                     />
                   </div>
                   <p className="text-xs text-amber-600 mt-1">
-                    For DVS, enter the serial number manually
+                    ⚠️ DVS requires manual serial number entry (not smartcard)
                   </p>
                 </div>
               ) : stockType && (
-                // Stock selection for FS/DO
+                // Smartcard selection for FS/DO
                 <>
                   <div>
-                    <Label htmlFor="smartcardSearch">Search Stock</Label>
+                    <Label htmlFor="smartcardSearch">Search Stock by Smartcard</Label>
                     <div className="relative">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
                         id="smartcardSearch"
-                        placeholder="Search by smartcard or stock name..."
+                        placeholder="Search by smartcard number..."
                         value={smartcardSearch}
                         onChange={(e) => setSmartcardSearch(e.target.value)}
                         className="pl-9"
                       />
                     </div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      ℹ️ Search and select stock using smartcard number
+                    </p>
                   </div>
 
                   <div>
-                    <Label htmlFor="stockSelect">Select Stock Item *</Label>
+                    <Label htmlFor="stockSelect">Select Stock Item (Smartcard) *</Label>
                     <Select value={selectedStockId} onValueChange={setSelectedStockId}>
                       <SelectTrigger id="stockSelect">
-                        <SelectValue placeholder="Select available stock" />
+                        <SelectValue placeholder="Select stock by smartcard number" />
                       </SelectTrigger>
                       <SelectContent>
                         {filteredStock.length === 0 ? (
@@ -509,7 +512,7 @@ export function DSRAddSale({ onNavigate }: DSRAddSaleProps) {
                                   <span className="font-medium">{stock.name}</span>
                                 </div>
                                 <div className="text-xs text-muted-foreground">
-                                  {stock.smartcard_number} • Qty: 1 • {stock.name}
+                                  Smartcard: {stock.smartcard_number} • {stock.name}
                                 </div>
                               </div>
                             </SelectItem>

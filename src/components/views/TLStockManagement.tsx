@@ -36,7 +36,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Package, Send, Loader2 } from 'lucide-react';
+import { Package, Send, Loader2, CreditCard } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 interface Stock {
@@ -49,16 +49,20 @@ interface Stock {
   assigned_to_tl?: string;
   batch_id?: string;
   created_at: string;
-  batch?: {
+  date_assigned?: string;
+  stock_batches?: {
     batch_number: string;
-  };
+  }[];
   dsr?: {
+    id: string;
     dsr_number: string;
+    user_id: string;
     profiles?: {
       full_name: string;
     };
   };
   team?: {
+    id: string;
     name: string;
   };
 }
@@ -67,6 +71,7 @@ interface DSR {
   id: string;
   dsr_number: string;
   user_id: string;
+  tl_id: string;
   profile?: {
     full_name: string;
     email: string;
@@ -83,7 +88,7 @@ export function TLStockManagement() {
   const [assigningStock, setAssigningStock] = useState<Stock | null>(null);
   const [assignFormData, setAssignFormData] = useState({
     dsr_id: '',
-    quantity: 0
+    quantity: 1
   });
   const [submitting, setSubmitting] = useState(false);
   const { toast } = useToast();
@@ -99,122 +104,239 @@ export function TLStockManagement() {
       setLoading(true);
 
       // Get TL record
-      const { data: tlData } = await supabase
+      const { data: tlData, error: tlError } = await supabase
         .from('team_leaders')
         .select('id, region_id')
         .eq('user_id', user?.id)
         .single();
 
+      if (tlError) {
+        console.error('TL fetch error:', tlError);
+        throw tlError;
+      }
+
       if (!tlData) {
-        console.error('TL record not found');
+        console.error('TL record not found for user:', user?.id);
+        toast({
+          variant: 'destructive',
+          title: 'Error',
+          description: 'Team Leader record not found. Please contact admin.',
+        });
         return;
       }
 
+      console.log('TL Data:', tlData);
+
       // Fetch teams under this TL
-      const { data: teamsData } = await supabase
+      const { data: teamsData, error: teamsError } = await supabase
         .from('teams')
         .select('*')
         .eq('tl_id', tlData.id);
 
-      setTeams(teamsData || []);
-
-      // Fetch DSRs under this TL
-      const { data: dsrsData } = await supabase
-        .from('dsrs')
-        .select('*')
-        .eq('tl_id', tlData.id);
-
-      // Fetch profiles for DSRs
-      if (dsrsData && dsrsData.length > 0) {
-        const userIds = dsrsData.map(d => d.user_id);
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, full_name, email')
-          .in('id', userIds);
-
-        const dsrsWithProfiles = dsrsData.map(dsr => ({
-          ...dsr,
-          profile: profiles?.find(p => p.id === dsr.user_id)
-        }));
-
-        setDsrs(dsrsWithProfiles as any);
+      if (teamsError) {
+        console.error('Teams fetch error:', teamsError);
       } else {
-        setDsrs([]);
+        console.log('Teams data:', teamsData);
+        setTeams(teamsData || []);
       }
 
-      // Fetch stock assigned to this TL or their teams/DSRs
+      // Fetch DSRs under this TL
+      const { data: dsrsData, error: dsrsError } = await supabase
+        .from('dsrs')
+        .select('id, dsr_number, user_id, tl_id')
+        .eq('tl_id', tlData.id);
+
+      if (dsrsError) {
+        console.error('DSRs fetch error:', dsrsError);
+        setDsrs([]);
+      } else {
+        console.log('DSRs data:', dsrsData);
+        
+        // Fetch profiles for DSRs
+        if (dsrsData && dsrsData.length > 0) {
+          const userIds = dsrsData.map(d => d.user_id);
+          const { data: profiles } = await supabase
+            .from('profiles')
+            .select('id, full_name, email')
+            .in('id', userIds);
+
+          const dsrsWithProfiles = dsrsData.map(dsr => ({
+            ...dsr,
+            profile: profiles?.find(p => p.id === dsr.user_id)
+          }));
+
+          console.log('DSRs with profiles:', dsrsWithProfiles);
+          setDsrs(dsrsWithProfiles as any);
+        } else {
+          setDsrs([]);
+        }
+      }
+
+      // Fetch stock assigned to this TL (assigned-tl status)
+      // ALSO fetch stock that's assigned to DSRs under this TL for tracking
       console.log('Fetching stock for TL ID:', tlData.id);
       
-      const { data: stockData, error } = await supabase
+      // Query 1: Stock directly assigned to TL (status: assigned-tl)
+      const { data: tlStockData, error: tlStockError } = await supabase
         .from('stock')
         .select(`
-          *,
-          batch:stock_batches(batch_number)
+          id,
+          stock_id,
+          type,
+          status,
+          created_at,
+          batch_id,
+          date_assigned,
+          assigned_to_dsr,
+          assigned_to_team,
+          assigned_to_tl,
+          assigned_by,
+          stock_batches!stock_batch_id_fkey (
+            batch_number
+          )
         `)
         .eq('assigned_to_tl', tlData.id)
         .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error('Error fetching stock:', error);
+      if (tlStockError) {
+        console.error('TL stock fetch error:', tlStockError);
         toast({
           variant: 'destructive',
           title: 'Error',
-          description: 'Failed to fetch stock: ' + error.message,
+          description: 'Failed to fetch TL stock: ' + tlStockError.message,
         });
       }
 
-      console.log('Stock fetched for TL:', tlData.id, 'Count:', stockData?.length || 0);
-      console.log('Stock data:', JSON.stringify(stockData, null, 2));
+      console.log('TL Stock (assigned to TL):', tlStockData);
+
+      // Query 2: Stock assigned to DSRs under this TL (status: assigned-dsr)
+      const { data: dsrStockData, error: dsrStockError } = await supabase
+        .from('stock')
+        .select(`
+          id,
+          stock_id,
+          type,
+          status,
+          created_at,
+          batch_id,
+          date_assigned,
+          assigned_to_dsr,
+          assigned_to_team,
+          assigned_to_tl,
+          assigned_by,
+          stock_batches!stock_batch_id_fkey (
+            batch_number
+          )
+        `)
+        .in('assigned_to_dsr', dsrsData?.map(d => d.id) || [])
+        .order('created_at', { ascending: false });
+
+      if (dsrStockError) {
+        console.error('DSR stock fetch error:', dsrStockError);
+      }
+
+      console.log('DSR Stock (assigned to DSRs):', dsrStockData);
+
+      // Combine both stock lists
+      const combinedStockData = [...(tlStockData || []), ...(dsrStockData || [])];
       
-      // Manually fetch DSR and team info if needed
-      if (stockData && stockData.length > 0) {
+      // Remove duplicates by ID
+      const uniqueStockData = Array.from(new Map(combinedStockData.map(item => [item.id, item])).values());
+
+      console.log('Combined unique stock:', uniqueStockData);
+
+      // Manually fetch DSR and team info for all stock items
+      if (uniqueStockData.length > 0) {
         // Get DSR info for assigned stock
-        const dsrIds = stockData
+        const dsrIds = uniqueStockData
           .filter(s => s.assigned_to_dsr)
           .map(s => s.assigned_to_dsr);
         
         if (dsrIds.length > 0) {
-          const { data: dsrInfo } = await supabase
+          const { data: dsrInfo, error: dsrInfoError } = await supabase
             .from('dsrs')
-            .select('id, dsr_number, user_id, profiles:user_id(full_name)')
+            .select(`
+              id,
+              dsr_number,
+              user_id,
+              profiles!dsrs_user_id_fkey (
+                full_name
+              )
+            `)
             .in('id', dsrIds);
+
+          if (dsrInfoError) {
+            console.error('DSR info fetch error:', dsrInfoError);
+          }
+
+          console.log('DSR info fetched:', dsrInfo);
           
-          // Attach DSR info to stock items
-          stockData.forEach(stock => {
-            if (stock.assigned_to_dsr) {
-              stock.dsr = dsrInfo?.find(d => d.id === stock.assigned_to_dsr);
-            }
-          });
-        }
-        
-        // Get team info for assigned stock
-        const teamIds = stockData
-          .filter(s => s.assigned_to_team)
-          .map(s => s.assigned_to_team);
-        
-        if (teamIds.length > 0) {
-          const { data: teamInfo } = await supabase
-            .from('teams')
-            .select('id, name')
-            .in('id', teamIds);
+          // Get team info for assigned stock
+          const teamIds = uniqueStockData
+            .filter(s => s.assigned_to_team)
+            .map(s => s.assigned_to_team);
           
-          // Attach team info to stock items
-          stockData.forEach(stock => {
-            if (stock.assigned_to_team) {
-              stock.team = teamInfo?.find(t => t.id === stock.assigned_to_team);
+          if (teamIds.length > 0) {
+            const { data: teamInfo, error: teamInfoError } = await supabase
+              .from('teams')
+              .select('id, name')
+              .in('id', teamIds);
+
+            if (teamInfoError) {
+              console.error('Team info fetch error:', teamInfoError);
             }
-          });
+
+            console.log('Team info fetched:', teamInfo);
+            
+            // Attach info to stock items
+            const enhancedStock = uniqueStockData.map(stock => {
+              const enhanced = { ...stock } as Stock;
+              
+              if (stock.assigned_to_dsr && dsrInfo) {
+                const dsr = dsrInfo.find(d => d.id === stock.assigned_to_dsr);
+                if (dsr) {
+                  enhanced.dsr = {
+                    id: dsr.id,
+                    dsr_number: dsr.dsr_number,
+                    user_id: dsr.user_id,
+                    profiles: dsr.profiles
+                  };
+                }
+              }
+              
+              if (stock.assigned_to_team && teamInfo) {
+                const team = teamInfo.find(t => t.id === stock.assigned_to_team);
+                if (team) {
+                  enhanced.team = {
+                    id: team.id,
+                    name: team.name
+                  };
+                }
+              }
+              
+              return enhanced;
+            });
+
+            console.log('Enhanced stock with DSR/Team info:', enhancedStock);
+            setStocks(enhancedStock);
+          } else {
+            setStocks(uniqueStockData as Stock[]);
+          }
+        } else {
+          setStocks(uniqueStockData as Stock[]);
         }
+      } else {
+        setStocks([]);
       }
 
-      setStocks(stockData || []);
+      console.log('Final stocks state:', stocks.length);
 
     } catch (error) {
       console.error('Error fetching data:', error);
       toast({
         variant: 'destructive',
         title: 'Error',
-        description: 'Failed to load stock data',
+        description: 'Failed to load stock data: ' + (error as Error).message,
       });
     } finally {
       setLoading(false);
@@ -222,6 +344,7 @@ export function TLStockManagement() {
   }
 
   function handleAssignClick(stock: Stock) {
+    console.log('Assigning stock:', stock);
     setAssigningStock(stock);
     setAssignFormData({
       dsr_id: '',
@@ -233,6 +356,8 @@ export function TLStockManagement() {
   async function handleAssignSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!assigningStock) return;
+
+    console.log('Submitting assignment for stock:', assigningStock.id);
 
     if (!assignFormData.dsr_id) {
       toast({
@@ -249,25 +374,33 @@ export function TLStockManagement() {
       const updateData: any = {
         status: 'assigned-dsr',
         assigned_to_dsr: assignFormData.dsr_id,
+        assigned_to_tl: null, // Remove TL assignment since it's going to DSR
         assigned_by: user?.id,
         date_assigned: new Date().toISOString()
       };
+
+      console.log('Updating stock with data:', updateData);
 
       const { error } = await supabase
         .from('stock')
         .update(updateData)
         .eq('id', assigningStock.id);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Supabase update error:', error);
+        throw error;
+      }
+
+      console.log('Stock assigned successfully');
 
       toast({
         title: 'Success',
-        description: 'Stock assigned successfully',
+        description: 'Stock assigned successfully to DSR',
       });
 
       setDialogOpen(false);
       setAssigningStock(null);
-      fetchData();
+      fetchData(); // Refresh data
 
     } catch (error: any) {
       console.error('Error assigning stock:', error);
@@ -289,17 +422,21 @@ export function TLStockManagement() {
     );
   }
 
+  // Filter stock based on status
   const availableStock = stocks.filter(s => s.status === 'assigned-tl' && !s.assigned_to_dsr);
   const assignedStock = stocks.filter(s => s.status === 'assigned-dsr' || s.status === 'assigned-team');
   const stockInHand = stocks.filter(s => s.status === 'assigned-dsr');
   const stockSold = stocks.filter(s => s.status === 'sold-paid');
   const stockUnpaid = stocks.filter(s => s.status === 'sold-unpaid');
 
-  console.log('TL Stock Summary:', {
+  console.log('Stock Summary:', {
     total: stocks.length,
-    statuses: stocks.map(s => ({ id: s.stock_id, status: s.status, assigned_to_dsr: s.assigned_to_dsr })),
-    availableCount: availableStock.length,
-    assignedCount: assignedStock.length
+    available: availableStock.length,
+    assigned: assignedStock.length,
+    inHand: stockInHand.length,
+    sold: stockSold.length,
+    unpaid: stockUnpaid.length,
+    allStocks: stocks.map(s => ({ id: s.id, status: s.status, stock_id: s.stock_id }))
   });
 
   return (
@@ -315,11 +452,20 @@ export function TLStockManagement() {
       <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <Card>
           <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Stock</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{stocks.length}</div>
+            <p className="text-xs text-muted-foreground mt-1">All inventory items</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium text-muted-foreground">Available Stock</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{availableStock.length}</div>
-            <p className="text-xs text-muted-foreground mt-1">{availableStock.length} items</p>
+            <p className="text-xs text-muted-foreground mt-1">Ready to assign</p>
           </CardContent>
         </Card>
         <Card>
@@ -337,19 +483,6 @@ export function TLStockManagement() {
         </Card>
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Assigned to Teams</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {assignedStock.filter(s => s.status === 'assigned-team').length}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {assignedStock.filter(s => s.status === 'assigned-team').length} items
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-3">
             <CardTitle className="text-sm font-medium text-muted-foreground">Stock In Hand</CardTitle>
           </CardHeader>
           <CardContent>
@@ -357,7 +490,7 @@ export function TLStockManagement() {
               {stockInHand.length}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              {stockInHand.length} items
+              With DSRs for sale
             </p>
           </CardContent>
         </Card>
@@ -370,7 +503,7 @@ export function TLStockManagement() {
               {stockSold.length}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              {stockSold.length} items
+              Completed transactions
             </p>
           </CardContent>
         </Card>
@@ -383,7 +516,7 @@ export function TLStockManagement() {
               {stockUnpaid.length}
             </div>
             <p className="text-xs text-muted-foreground mt-1">
-              {stockUnpaid.length} items
+              Pending payment
             </p>
           </CardContent>
         </Card>
@@ -392,14 +525,17 @@ export function TLStockManagement() {
       {/* Available Stock Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Available Stock</CardTitle>
-          <CardDescription>Stock available for assignment</CardDescription>
+          <CardTitle>Available Stock for Assignment</CardTitle>
+          <CardDescription>Stock assigned to you that can be assigned to DSRs</CardDescription>
         </CardHeader>
         <CardContent>
           {availableStock.length === 0 ? (
             <div className="text-center py-8">
               <Package className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
-              <p className="text-muted-foreground">No available stock</p>
+              <p className="text-muted-foreground">No available stock assigned to you</p>
+              <p className="text-sm text-muted-foreground mt-2">
+                Contact your manager or administrator to get stock assigned to you first.
+              </p>
             </div>
           ) : (
             <Table>
@@ -407,7 +543,8 @@ export function TLStockManagement() {
                 <TableRow>
                   <TableHead>Stock ID</TableHead>
                   <TableHead>Type</TableHead>
-                  <TableHead>Quantity</TableHead>
+                  <TableHead>Batch</TableHead>
+                  <TableHead>Smartcard</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
@@ -415,10 +552,20 @@ export function TLStockManagement() {
               <TableBody>
                 {availableStock.map((stock) => (
                   <TableRow key={stock.id}>
-                    <TableCell className="font-mono text-sm">{stock.stock_id}</TableCell>
-                    <TableCell className="font-medium">{stock.type}</TableCell>
+                    <TableCell className="font-mono text-sm">{stock.id.substring(0, 8)}...</TableCell>
+                    <TableCell className="font-medium">
+                      <Badge variant="outline">{stock.type}</Badge>
+                    </TableCell>
                     <TableCell>
-                      <Badge variant="outline">1</Badge>
+                      <Badge variant="secondary">
+                        {stock.stock_batches?.[0]?.batch_number || stock.batch_id || 'N/A'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <CreditCard className="h-4 w-4 text-muted-foreground" />
+                        <span className="font-mono text-sm">{stock.stock_id || 'N/A'}</span>
+                      </div>
                     </TableCell>
                     <TableCell>
                       <Badge variant="secondary">{stock.status}</Badge>
@@ -427,9 +574,10 @@ export function TLStockManagement() {
                       <Button
                         size="sm"
                         onClick={() => handleAssignClick(stock)}
+                        disabled={dsrs.length === 0}
                       >
                         <Send className="h-4 w-4 mr-2" />
-                        Assign
+                        {dsrs.length === 0 ? 'No DSRs' : 'Assign to DSR'}
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -443,14 +591,14 @@ export function TLStockManagement() {
       {/* Assigned Stock Table */}
       <Card>
         <CardHeader>
-          <CardTitle>Assigned Stock</CardTitle>
-          <CardDescription>Stock already assigned to teams and DSRs</CardDescription>
+          <CardTitle>Stock Assigned to DSRs</CardTitle>
+          <CardDescription>Stock currently assigned to your DSRs</CardDescription>
         </CardHeader>
         <CardContent>
-          {assignedStock.length === 0 ? (
+          {assignedStock.filter(s => s.status === 'assigned-dsr').length === 0 ? (
             <div className="text-center py-8">
               <Package className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
-              <p className="text-muted-foreground">No assigned stock yet</p>
+              <p className="text-muted-foreground">No stock assigned to DSRs yet</p>
             </div>
           ) : (
             <Table>
@@ -458,41 +606,51 @@ export function TLStockManagement() {
                 <TableRow>
                   <TableHead>Stock ID</TableHead>
                   <TableHead>Type</TableHead>
-                  <TableHead>Quantity</TableHead>
+                  <TableHead>Batch</TableHead>
+                  <TableHead>Smartcard</TableHead>
                   <TableHead>Assigned To</TableHead>
+                  <TableHead>Date Assigned</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Date</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {assignedStock.map((stock) => (
+                {assignedStock
+                  .filter(s => s.status === 'assigned-dsr')
+                  .map((stock) => (
                   <TableRow key={stock.id}>
-                    <TableCell className="font-mono text-sm">{stock.stock_id}</TableCell>
-                    <TableCell className="font-medium">{stock.type}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">1</Badge>
+                    <TableCell className="font-mono text-sm">{stock.id.substring(0, 8)}...</TableCell>
+                    <TableCell className="font-medium">
+                      <Badge variant="outline">{stock.type}</Badge>
                     </TableCell>
                     <TableCell>
-                      {stock.status === 'assigned-dsr' && stock.dsr ? (
+                      <Badge variant="secondary">
+                        {stock.stock_batches?.[0]?.batch_number || stock.batch_id || 'N/A'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <CreditCard className="h-4 w-4 text-muted-foreground" />
+                        <span className="font-mono text-sm">{stock.stock_id || 'N/A'}</span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {stock.dsr ? (
                         <div>
                           <div className="font-medium">{stock.dsr.profiles?.full_name || 'N/A'}</div>
                           <div className="text-xs text-muted-foreground">{stock.dsr.dsr_number}</div>
-                        </div>
-                      ) : stock.status === 'assigned-team' && stock.team ? (
-                        <div>
-                          <Badge variant="secondary">{stock.team.name}</Badge>
                         </div>
                       ) : (
                         '-'
                       )}
                     </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {stock.date_assigned ? new Date(stock.date_assigned).toLocaleDateString() : 
+                       stock.created_at ? new Date(stock.created_at).toLocaleDateString() : 'N/A'}
+                    </TableCell>
                     <TableCell>
                       <Badge variant={stock.status === 'assigned-dsr' ? 'default' : 'secondary'}>
-                        {stock.status}
+                        {stock.status === 'assigned-dsr' ? 'In Hand (DSR)' : stock.status}
                       </Badge>
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {new Date(stock.created_at).toLocaleDateString()}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -503,24 +661,19 @@ export function TLStockManagement() {
       </Card>
 
       {/* Unpaid Stock Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Unpaid Stock</CardTitle>
-          <CardDescription>Stock sold but payment not yet received</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {stockUnpaid.length === 0 ? (
-            <div className="text-center py-8">
-              <Package className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
-              <p className="text-muted-foreground">No unpaid stock</p>
-            </div>
-          ) : (
+      {stockUnpaid.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Unpaid Stock</CardTitle>
+            <CardDescription>Stock sold but payment not yet received</CardDescription>
+          </CardHeader>
+          <CardContent>
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Stock ID</TableHead>
                   <TableHead>Type</TableHead>
-                  <TableHead>Quantity</TableHead>
+                  <TableHead>Smartcard</TableHead>
                   <TableHead>Assigned To</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Date</TableHead>
@@ -529,20 +682,21 @@ export function TLStockManagement() {
               <TableBody>
                 {stockUnpaid.map((stock) => (
                   <TableRow key={stock.id}>
-                    <TableCell className="font-mono text-sm">{stock.stock_id}</TableCell>
-                    <TableCell className="font-medium">{stock.type}</TableCell>
+                    <TableCell className="font-mono text-sm">{stock.id.substring(0, 8)}...</TableCell>
+                    <TableCell className="font-medium">
+                      <Badge variant="outline">{stock.type}</Badge>
+                    </TableCell>
                     <TableCell>
-                      <Badge variant="outline">1</Badge>
+                      <div className="flex items-center gap-2">
+                        <CreditCard className="h-4 w-4 text-muted-foreground" />
+                        <span className="font-mono text-sm">{stock.stock_id || 'N/A'}</span>
+                      </div>
                     </TableCell>
                     <TableCell>
                       {stock.dsr ? (
                         <div>
                           <div className="font-medium">{stock.dsr.profiles?.full_name || 'N/A'}</div>
                           <div className="text-xs text-muted-foreground">{stock.dsr.dsr_number}</div>
-                        </div>
-                      ) : stock.team ? (
-                        <div>
-                          <Badge variant="secondary">{stock.team.name}</Badge>
                         </div>
                       ) : (
                         '-'
@@ -552,15 +706,16 @@ export function TLStockManagement() {
                       <Badge variant="destructive">Unpaid</Badge>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      {new Date(stock.created_at).toLocaleDateString()}
+                      {stock.date_assigned ? new Date(stock.date_assigned).toLocaleDateString() : 
+                       stock.created_at ? new Date(stock.created_at).toLocaleDateString() : 'N/A'}
                     </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Assign Stock Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -574,6 +729,13 @@ export function TLStockManagement() {
               <div className="space-y-2">
                 <Label>Stock ID</Label>
                 <Input
+                  value={assigningStock?.id.substring(0, 8) || 'N/A'}
+                  disabled
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Smartcard Number</Label>
+                <Input
                   value={assigningStock?.stock_id || 'N/A'}
                   disabled
                 />
@@ -582,6 +744,13 @@ export function TLStockManagement() {
                 <Label>Stock Type</Label>
                 <Input
                   value={assigningStock?.type || 'N/A'}
+                  disabled
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Batch</Label>
+                <Input
+                  value={assigningStock?.stock_batches?.[0]?.batch_number || assigningStock?.batch_id || 'N/A'}
                   disabled
                 />
               </div>
@@ -597,17 +766,22 @@ export function TLStockManagement() {
                   <SelectContent>
                     {dsrs.length === 0 ? (
                       <div className="px-2 py-1.5 text-sm text-muted-foreground">
-                        No DSRs available. Create a DSR first.
+                        No DSRs available under your leadership. Create a DSR first.
                       </div>
                     ) : (
                       dsrs.map((dsr) => (
                         <SelectItem key={dsr.id} value={dsr.id}>
-                          {dsr.dsr_number} - {dsr.profile?.full_name || 'N/A'}
+                          {dsr.dsr_number} - {dsr.profile?.full_name || 'Unnamed DSR'}
                         </SelectItem>
                       ))
                     )}
                   </SelectContent>
                 </Select>
+                {dsrs.length === 0 && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    You need to have DSRs under your leadership to assign stock.
+                  </p>
+                )}
               </div>
             </div>
             <DialogFooter>
@@ -619,7 +793,10 @@ export function TLStockManagement() {
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={submitting}>
+              <Button 
+                type="submit" 
+                disabled={submitting || dsrs.length === 0}
+              >
                 {submitting ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />

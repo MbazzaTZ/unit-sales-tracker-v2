@@ -80,6 +80,8 @@ interface Sale {
   commissionReason?: string;
   commissionAmount: number;
   notes?: string;
+  batchNumber?: string; // Added batch number
+  stockId?: string; // Added stock ID
 }
 
 export function DSRMySales({ onNavigate }: DSRMySalesProps) {
@@ -117,14 +119,25 @@ export function DSRMySales({ onNavigate }: DSRMySalesProps) {
         return;
       }
 
-      // Fetch sales
+      // Fetch sales with related stock and batch information
       const { data: salesData, error } = await supabase
         .from('sales')
-        .select('*')
+        .select(`
+          *,
+          stock:stock_id (
+            stock_id,
+            batch_id,
+            stock_batches!stock_batch_id_fkey (
+              batch_number
+            )
+          )
+        `)
         .eq('dsr_id', dsrData.id)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
+
+      console.log('Fetched sales data:', salesData); // Debug log
 
       const calculateRevenue = (saleType: string) => {
         switch (saleType) {
@@ -143,19 +156,32 @@ export function DSRMySales({ onNavigate }: DSRMySalesProps) {
           sale.stock_id
         );
 
+        // Extract batch number from the relation if available
+        const batchNumber = sale.stock?.[0]?.stock_batches?.[0]?.batch_number || 
+                           sale.batch_id || 
+                           'N/A';
+        
+        // Extract smartcard number - prioritize stock table, fallback to sale table
+        const smartcardNumber = sale.stock?.[0]?.stock_id || 
+                               sale.smart_card_number || 
+                               sale.sn_number || 
+                               'N/A';
+
         return {
           id: sale.sale_id,
           date: sale.created_at || new Date().toISOString(),
           stockType: sale.sale_type === 'FS' ? 'FS' : sale.sale_type === 'DO' ? 'DO' : 'DVS',
-          smartcardNumber: sale.smart_card_number,
-          serialNumber: sale.sn_number,
+          smartcardNumber: smartcardNumber,
+          serialNumber: sale.sn_number || sale.smart_card_number || smartcardNumber,
           packageType: sale.package_option,
           amount: calculateRevenue(sale.sale_type),
           paymentStatus: sale.payment_status as 'paid' | 'unpaid',
           commissionStatus: commission.status,
           commissionReason: commission.reason,
           commissionAmount: commission.breakdown.totalCommission,
-          notes: ''
+          notes: sale.notes || '',
+          batchNumber: batchNumber,
+          stockId: sale.stock_id
         };
       }) || [];
 
@@ -171,7 +197,8 @@ export function DSRMySales({ onNavigate }: DSRMySalesProps) {
   const filteredSales = sales.filter((sale) => {
     const matchesSearch = 
       sale.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      sale.smartcardNumber.toLowerCase().includes(searchQuery.toLowerCase());
+      sale.smartcardNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (sale.batchNumber && sale.batchNumber.toLowerCase().includes(searchQuery.toLowerCase()));
     
     const matchesStatus = filterStatus === 'all' || sale.paymentStatus === filterStatus;
     const matchesStockType = filterStockType === 'all' || sale.stockType === filterStockType;
@@ -264,10 +291,22 @@ export function DSRMySales({ onNavigate }: DSRMySalesProps) {
     // Here you would navigate to edit form or open edit dialog
   };
 
-  const handleDelete = (sale: Sale) => {
+  const handleDelete = async (sale: Sale) => {
     if (confirm(`Are you sure you want to delete sale ${sale.id}?`)) {
-      toast.success(`Sale ${sale.id} deleted successfully`);
-      // Here you would call your delete API
+      try {
+        const { error } = await supabase
+          .from('sales')
+          .delete()
+          .eq('sale_id', sale.id);
+
+        if (error) throw error;
+
+        toast.success(`Sale ${sale.id} deleted successfully`);
+        fetchMySales(); // Refresh the list
+      } catch (error) {
+        console.error('Error deleting sale:', error);
+        toast.error('Failed to delete sale');
+      }
     }
   };
 
@@ -379,7 +418,7 @@ export function DSRMySales({ onNavigate }: DSRMySalesProps) {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search by sale ID or smartcard number..."
+                placeholder="Search by sale ID, smartcard, or batch number..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-9"
@@ -419,6 +458,7 @@ export function DSRMySales({ onNavigate }: DSRMySalesProps) {
                   <TableHead>Date & Time</TableHead>
                   <TableHead>Stock Type</TableHead>
                   <TableHead>Smartcard/SN</TableHead>
+                  <TableHead>Batch</TableHead>
                   <TableHead>Package</TableHead>
                   <TableHead>Amount</TableHead>
                   <TableHead>Payment</TableHead>
@@ -427,9 +467,18 @@ export function DSRMySales({ onNavigate }: DSRMySalesProps) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredSales.length === 0 ? (
+                {loading ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={10} className="text-center py-8">
+                      <div className="flex items-center justify-center">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                        <span className="ml-2">Loading sales...</span>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ) : filteredSales.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                       No sales found
                     </TableCell>
                   </TableRow>
@@ -447,10 +496,22 @@ export function DSRMySales({ onNavigate }: DSRMySalesProps) {
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <CreditCard className="h-4 w-4 text-muted-foreground" />
-                          <span className="font-mono text-sm">
-                            {sale.stockType === 'DVS' ? sale.serialNumber : sale.smartcardNumber}
-                          </span>
+                          <div className="flex flex-col">
+                            <span className="font-mono text-sm">
+                              {sale.stockType === 'DVS' ? sale.serialNumber : sale.smartcardNumber}
+                            </span>
+                            {sale.stockId && (
+                              <span className="text-xs text-muted-foreground">
+                                Stock ID: {sale.stockId}
+                              </span>
+                            )}
+                          </div>
                         </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="secondary" className="font-mono">
+                          {sale.batchNumber || 'N/A'}
+                        </Badge>
                       </TableCell>
                       <TableCell>{sale.packageType}</TableCell>
                       <TableCell className="font-semibold">
@@ -559,6 +620,15 @@ export function DSRMySales({ onNavigate }: DSRMySalesProps) {
                       <span className="font-medium">{selectedSale.packageType}</span>
                     </div>
                   </div>
+
+                  {selectedSale.batchNumber && (
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">Batch Number</p>
+                      <Badge variant="secondary" className="font-mono">
+                        {selectedSale.batchNumber}
+                      </Badge>
+                    </div>
+                  )}
                 </div>
 
                 <div className="space-y-4">
@@ -567,6 +637,14 @@ export function DSRMySales({ onNavigate }: DSRMySalesProps) {
                     <div className="flex items-center gap-2 text-foreground">
                       <CreditCard className="h-4 w-4" />
                       <span className="font-mono font-medium">{selectedSale.smartcardNumber}</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-1">Serial Number</p>
+                    <div className="flex items-center gap-2 text-foreground">
+                      <CreditCard className="h-4 w-4" />
+                      <span className="font-mono font-medium">{selectedSale.serialNumber}</span>
                     </div>
                   </div>
 
@@ -596,6 +674,29 @@ export function DSRMySales({ onNavigate }: DSRMySalesProps) {
                       </span>
                     </div>
                   </div>
+                </div>
+              </div>
+
+              {/* Commission Information */}
+              <div className="p-4 bg-secondary/30 rounded-lg">
+                <h3 className="font-semibold mb-2">Commission Information</h3>
+                <div className="flex items-center justify-between">
+                  <div>
+                    {getCommissionStatusBadge(selectedSale.commissionStatus, selectedSale.commissionReason)}
+                    {selectedSale.commissionReason && (
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {selectedSale.commissionReason}
+                      </p>
+                    )}
+                  </div>
+                  {selectedSale.commissionStatus === 'eligible' && (
+                    <div className="text-right">
+                      <p className="text-sm text-muted-foreground">Commission Amount</p>
+                      <p className="text-xl font-bold text-success">
+                        TZS {selectedSale.commissionAmount.toLocaleString()}
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
 

@@ -29,7 +29,8 @@ import {
   ShoppingCart,
   Filter,
   ArrowLeft,
-  AlertCircle
+  AlertCircle,
+  CreditCard
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -104,6 +105,7 @@ export function DSRStock({ onNavigate }: DSRStockProps = {}) {
       // Fetch stock assigned to this DSR
       console.log('Fetching stock for DSR ID:', dsrData.id);
       
+      // Updated query to get more detailed stock information
       const { data: stockData, error: stockError } = await supabase
         .from('stock')
         .select(`
@@ -115,7 +117,8 @@ export function DSRStock({ onNavigate }: DSRStockProps = {}) {
           date_assigned,
           assigned_by,
           batch_id,
-          stock_batches (
+          stock_batches!stock_batch_id_fkey (
+            id,
             batch_number
           )
         `)
@@ -144,23 +147,38 @@ export function DSRStock({ onNavigate }: DSRStockProps = {}) {
         );
       }
 
-      // Transform data
-      const transformedStock: StockItem[] = (stockData || []).map((item: any) => ({
-        id: item.id,
-        stock_id: item.stock_id || item.id,
-        type: item.type || 'Unknown',
-        batch: item.stock_batches?.batch_number || 'N/A',
-        smartcardNumber: 'N/A',
-        status: item.status,
-        date: item.date_assigned ? new Date(item.date_assigned).toLocaleDateString() : new Date(item.created_at).toLocaleDateString(),
-        quantity: 1,
-        assignedBy: assignedByNames[item.assigned_by] || 'Admin',
-      }));
+      // Transform data - FIXED: Use stock_id as smartcard number
+      const transformedStock: StockItem[] = (stockData || []).map((item: any) => {
+        // Extract smartcard number from stock_id
+        const smartcardNumber = item.stock_id || `STOCK-${item.id.substring(0, 8)}`;
+        
+        // Extract batch number - handle the nested structure properly
+        const batchNumber = item.stock_batches?.[0]?.batch_number || 
+                           item.stock_batches?.batch_number || 
+                           item.batch_id || 
+                           'N/A';
 
-      // All assigned-dsr stock is available for sale (no separate new/accepted states)
+        return {
+          id: item.id,
+          stock_id: item.id, // Use the stock record ID
+          type: item.type || 'Unknown',
+          batch: batchNumber,
+          smartcardNumber: smartcardNumber, // Use stock_id as smartcard number
+          status: item.status,
+          date: item.date_assigned ? new Date(item.date_assigned).toLocaleDateString() : new Date(item.created_at).toLocaleDateString(),
+          quantity: 1,
+          assignedBy: assignedByNames[item.assigned_by] || 'Admin',
+        };
+      });
+
       console.log('Transformed stock items:', transformedStock);
-      setNewStockAssigned([]);
-      setMyStock(transformedStock);
+      
+      // Separate new assigned-dsr stock from other stock
+      const newStock = transformedStock.filter(item => item.status === 'assigned-dsr');
+      const otherStock = transformedStock.filter(item => item.status !== 'assigned-dsr');
+      
+      setNewStockAssigned(newStock);
+      setMyStock([...newStock, ...otherStock]);
 
     } catch (error: any) {
       console.error('Error fetching stock data:', error);
@@ -186,8 +204,25 @@ export function DSRStock({ onNavigate }: DSRStockProps = {}) {
   });
 
   const handleAcceptStock = async (item: StockItem) => {
-    // No longer needed - stock is automatically available
-    toast.info('Stock is already available for sale');
+    // Stock is already accepted when assigned, but we can mark it as confirmed
+    try {
+      const { error } = await supabase
+        .from('stock')
+        .update({ 
+          date_confirmed: new Date().toISOString()
+        })
+        .eq('id', item.id);
+
+      if (error) throw error;
+
+      // Remove from new stock list
+      setNewStockAssigned(newStockAssigned.filter(stock => stock.id !== item.id));
+      toast.success(`Stock ${item.smartcardNumber} confirmed`);
+      
+    } catch (error: any) {
+      console.error('Error confirming stock:', error);
+      toast.error('Failed to confirm stock: ' + error.message);
+    }
   };
 
   const handleRejectStock = (item: StockItem) => {
@@ -209,14 +244,19 @@ export function DSRStock({ onNavigate }: DSRStockProps = {}) {
         .from('stock')
         .update({ 
           status: 'assigned-tl',
-          notes: `Rejected by DSR: ${rejectReason}`
+          notes: `Rejected by DSR: ${rejectReason}`,
+          assigned_to_dsr: null, // Remove DSR assignment
+          date_assigned: null,
+          assigned_by: null
         })
-        .eq('id', selectedStock.stock_id);
+        .eq('id', selectedStock.id);
 
       if (error) throw error;
 
-      // Remove from new stock
+      // Remove from lists
       setNewStockAssigned(newStockAssigned.filter(stock => stock.id !== selectedStock.id));
+      setMyStock(myStock.filter(stock => stock.id !== selectedStock.id));
+      
       toast.success(`Stock rejected. Reason sent to TL.`);
       
     } catch (error: any) {
@@ -236,7 +276,8 @@ export function DSRStock({ onNavigate }: DSRStockProps = {}) {
       toast.info(`Opening sale form for ${item.smartcardNumber}`);
       onNavigate('add-sale');
     } else {
-      toast.info(`Sell stock ${item.id} - ${item.smartcardNumber}`);
+      toast.info(`Sell stock ${item.smartcardNumber} - Feature coming soon`);
+      // Here you would open a sale dialog or navigate to sale page
     }
   };
 
@@ -314,12 +355,16 @@ export function DSRStock({ onNavigate }: DSRStockProps = {}) {
                     <Package className="h-5 w-5 text-warning" />
                   </div>
                   <div>
-                    <p className="font-medium text-foreground">{item.id}</p>
+                    <p className="font-medium text-foreground">ID: {item.id.substring(0, 8)}</p>
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <CreditCard className="h-4 w-4" />
+                      <span>{item.smartcardNumber}</span>
+                    </div>
                     <p className="text-sm text-muted-foreground">
-                      {item.type} • {item.smartcardNumber}
+                      {item.type} • Batch: {item.batch}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      Batch: {item.batch} • Assigned by: {item.assignedBy}
+                      Assigned by: {item.assignedBy}
                     </p>
                   </div>
                 </div>
@@ -378,34 +423,49 @@ export function DSRStock({ onNavigate }: DSRStockProps = {}) {
               <TableHead className="text-muted-foreground">Type</TableHead>
               <TableHead className="text-muted-foreground">Smartcard</TableHead>
               <TableHead className="text-muted-foreground">Batch</TableHead>
-              <TableHead className="text-muted-foreground">Quantity</TableHead>
               <TableHead className="text-muted-foreground">Status</TableHead>
-              <TableHead className="text-muted-foreground">Date</TableHead>
+              <TableHead className="text-muted-foreground">Date Assigned</TableHead>
+              <TableHead className="text-muted-foreground">Assigned By</TableHead>
               <TableHead className="text-muted-foreground text-right">Action</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filteredStock.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                   No stock items found
                 </TableCell>
               </TableRow>
             ) : (
               filteredStock.map((item) => (
                 <TableRow key={item.id} className="border-border/50 hover:bg-secondary/30">
-                  <TableCell className="text-foreground font-medium">{item.type}</TableCell>
-                  <TableCell className="font-mono text-sm text-muted-foreground">{item.smartcardNumber}</TableCell>
-                  <TableCell className="text-muted-foreground">{item.batch}</TableCell>
-                  <TableCell className="text-foreground font-medium">{item.quantity}</TableCell>
+                  <TableCell className="text-foreground font-medium">
+                    <Badge variant="outline" className="border-primary text-primary">
+                      {item.type}
+                    </Badge>
+                  </TableCell>
                   <TableCell>
-                    <Badge className={cn('font-medium', statusConfig[item.status].className)}>
-                      {statusConfig[item.status].label}
+                    <div className="flex items-center gap-2">
+                      <CreditCard className="h-4 w-4 text-muted-foreground" />
+                      <span className="font-mono text-sm text-foreground">
+                        {item.smartcardNumber}
+                      </span>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground font-medium">
+                    {item.batch}
+                  </TableCell>
+                  <TableCell>
+                    <Badge className={cn('font-medium', statusConfig[item.status]?.className || 'bg-gray-500/10 text-gray-500')}>
+                      {statusConfig[item.status]?.label || item.status}
                     </Badge>
                   </TableCell>
                   <TableCell className="text-muted-foreground">{item.date}</TableCell>
+                  <TableCell className="text-muted-foreground text-sm">
+                    {item.assignedBy || 'System'}
+                  </TableCell>
                   <TableCell className="text-right">
-                    {item.status === 'in-hand' && (
+                    {item.status === 'assigned-dsr' && (
                       <Button 
                         size="sm" 
                         className="bg-success hover:bg-success/90 text-success-foreground"
@@ -414,6 +474,16 @@ export function DSRStock({ onNavigate }: DSRStockProps = {}) {
                         <ShoppingCart className="h-4 w-4 mr-1" />
                         Sell
                       </Button>
+                    )}
+                    {item.status === 'sold-unpaid' && (
+                      <Badge variant="outline" className="border-warning text-warning">
+                        Awaiting Payment
+                      </Badge>
+                    )}
+                    {item.status === 'sold-paid' && (
+                      <Badge variant="outline" className="border-success text-success">
+                        Sold
+                      </Badge>
                     )}
                   </TableCell>
                 </TableRow>
@@ -445,10 +515,10 @@ export function DSRStock({ onNavigate }: DSRStockProps = {}) {
                     <span className="font-medium">ID:</span> {selectedStock.id}
                   </p>
                   <p className="text-muted-foreground">
-                    <span className="font-medium">Type:</span> {selectedStock.type}
+                    <span className="font-medium">Smartcard:</span> {selectedStock.smartcardNumber}
                   </p>
                   <p className="text-muted-foreground">
-                    <span className="font-medium">Smartcard:</span> {selectedStock.smartcardNumber}
+                    <span className="font-medium">Type:</span> {selectedStock.type}
                   </p>
                   <p className="text-muted-foreground">
                     <span className="font-medium">Batch:</span> {selectedStock.batch}
