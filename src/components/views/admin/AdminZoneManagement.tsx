@@ -44,7 +44,6 @@ interface Zone {
   name: string;
   code: string;
   zonal_manager?: string; // RSM renamed → Zonal Manager
-  territories?: TerritoryTSM[];
   created_at: string;
   tl_count?: number;
   team_count?: number;
@@ -295,11 +294,7 @@ export function AdminZoneManagement() {
       code: zone.code,
       zonal_manager: zone.zonal_manager || '',
     });
-    setTerritories(
-      zone.territories && zone.territories.length > 0
-        ? zone.territories
-        : [{ territory: '', tsm_name: '' }]
-    );
+    setTerritories([{ territory: '', tsm_name: '' }]);
     setDialogOpen(true);
   }
 
@@ -550,7 +545,7 @@ export function AdminZoneManagement() {
                 <TableHead>Zone Name</TableHead>
                 <TableHead>Code</TableHead>
                 <TableHead>Zonal Manager</TableHead>
-                <TableHead>Territories</TableHead>
+                <TableHead>Manager Info</TableHead>
                 <TableHead className="text-center">Territory Count</TableHead>
                 <TableHead className="text-center">TLs</TableHead>
                 <TableHead className="text-center">Teams</TableHead>
@@ -581,24 +576,8 @@ export function AdminZoneManagement() {
 
                     <TableCell className="text-sm">{zone.zonal_manager || '-'}</TableCell>
 
-                    <TableCell className="text-sm">
-                      {zone.territories && zone.territories.length > 0 ? (
-                        <div className="space-y-1">
-                          {zone.territories.map((t, idx) => (
-                            <div key={idx} className="text-xs">
-                              <span className="font-medium">{t.territory}</span>
-                              {t.tsm_name && (
-                                <span className="text-muted-foreground">
-                                  {' '}
-                                  (TSM: {t.tsm_name})
-                                </span>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        '-'
-                      )}
+                    <TableCell className="text-sm text-muted-foreground">
+                      {zone.zonal_manager ? `Managed by ${zone.zonal_manager}` : 'No manager assigned'}
                     </TableCell>
 
                     <TableCell className="text-center">
