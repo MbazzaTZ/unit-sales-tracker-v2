@@ -22,7 +22,7 @@ import { TLDSRManagement } from '@/components/views/TLDSRManagement';
 import { TLStockManagement } from '@/components/views/TLStockManagement';
 import { TLSalesVerification } from '@/components/views/TLSalesVerification';
 import { TLReports } from '@/components/views/TLReports';
-import { Profile } from '@/components/views/Profile';
+import { GeneralDashboard as Profile } from '@/components/views/Profile';
 import ManagerDashboard from '@/components/views/ManagerDashboard';
 import ManagerStock from '@/components/views/ManagerStock';
 import ManagerSalesTeam from '@/components/views/ManagerSalesTeam';
