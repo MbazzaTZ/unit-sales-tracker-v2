@@ -72,13 +72,36 @@ export function AdminManagerManagement() {
         .select(
           `
           *,
-          profiles:user_id(full_name, email, phone_number),
-          zone:zone_id(id, name)
+          zones!managers_zone_id_fkey(id, name)
         `
         )
         .order("created_at", { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error("Error fetching managers:", error);
+        throw error;
+      }
+
+      // Fetch profiles separately
+      if (data && data.length > 0) {
+        const userIds = data.map(m => m.user_id);
+        const { data: profiles, error: profileError } = await supabase
+          .from("profiles")
+          .select("id, full_name, email, phone_number")
+          .in("id", userIds);
+
+        if (profileError) {
+          console.error("Error fetching profiles:", profileError);
+        }
+
+        // Map profiles to managers
+        return data.map(manager => ({
+          ...manager,
+          zone: manager.zones,
+          profiles: profiles?.find(p => p.id === manager.user_id)
+        }));
+      }
+
       return data;
     },
   });
