@@ -336,7 +336,7 @@ export function AdminStockManagement() {
       }
 
       const stockItems = items.map(item => ({
-        stock_id: item.serial_number, // Use serial number as stock_id (unique identifier)
+        // stock_id will be auto-generated based on type (e.g., FS2025-000001)
         serial_number: item.serial_number,
         smartcard_number: item.smartcard_number && item.smartcard_number.trim() !== '' ? item.smartcard_number : null,
         type: item.type,
@@ -369,16 +369,20 @@ export function AdminStockManagement() {
   });
 
   const handleManualSubmit = async () => {
-    if (!manualStockId || !manualType) {
-      toast({ title: 'Please fill required fields (Stock Type and Stock ID)', variant: 'destructive' });
+    if (!manualType) {
+      toast({ title: 'Please select Stock Type', variant: 'destructive' });
       return;
     }
     
     const stockData: any = {
-      stock_id: manualStockId,
       type: manualType,
       status: 'unassigned' // Default status
     };
+    
+    // Add stock_id if provided, otherwise will be auto-generated
+    if (manualStockId && manualStockId.trim()) {
+      stockData.stock_id = manualStockId;
+    }
 
     // Add optional fields
     if (serialNumber) stockData.serial_number = serialNumber;
@@ -563,15 +567,14 @@ export function AdminStockManagement() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Stock ID <span className="text-destructive">*</span></Label>
+                  <Label>Stock ID (Optional)</Label>
                   <Input
-                    placeholder="e.g., STOCK-001"
+                    placeholder="Leave empty for auto-generation"
                     value={manualStockId}
                     onChange={(e) => setManualStockId(e.target.value)}
                     className="bg-secondary/50"
-                    required
                   />
-                  <p className="text-xs text-muted-foreground">Unique identifier for this stock item</p>
+                  <p className="text-xs text-muted-foreground">Auto-generated as TYPE+YEAR-NNNNNN (e.g., FS2025-000001) if left empty</p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -823,6 +826,8 @@ export function AdminStockManagement() {
               <TableHeader>
                 <TableRow className="border-border/50 hover:bg-transparent">
                   <TableHead className="text-muted-foreground">Stock ID</TableHead>
+                  <TableHead className="text-muted-foreground">Serial Number</TableHead>
+                  <TableHead className="text-muted-foreground">Smartcard</TableHead>
                   <TableHead className="text-muted-foreground">Type</TableHead>
                   <TableHead className="text-muted-foreground">Batch</TableHead>
                   <TableHead className="text-muted-foreground">Assigned To</TableHead>
@@ -835,6 +840,12 @@ export function AdminStockManagement() {
                   <TableRow key={item.id} className="border-border/50 hover:bg-secondary/30">
                     <TableCell className="font-mono font-medium text-foreground">
                       {item.stock_id || 'N/A'}
+                    </TableCell>
+                    <TableCell className="font-mono text-sm text-foreground">
+                      {item.serial_number || '-'}
+                    </TableCell>
+                    <TableCell className="font-mono text-sm text-foreground">
+                      {item.smartcard_number || '-'}
                     </TableCell>
                     <TableCell className="text-foreground">
                       <Badge variant="outline">{item.type}</Badge>
