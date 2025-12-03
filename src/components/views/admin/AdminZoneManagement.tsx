@@ -90,20 +90,38 @@ export function AdminZoneManagement() {
 
       const zonesWithCounts = await Promise.all(
         (zoneData || []).map(async (zone) => {
+          // Get regions in this zone
+          const { data: regionsData } = await supabase
+            .from('regions')
+            .select('id')
+            .eq('zone_id', zone.id);
+          
+          const regionIds = regionsData?.map(r => r.id) || [];
+          
+          // Count TLs in these regions
           const { count: tlCount } = await supabase
             .from('team_leaders')
             .select('*', { count: 'exact', head: true })
-            .eq('zone_id', zone.id);
+            .in('region_id', regionIds.length > 0 ? regionIds : ['']);
 
+          // Count teams in these regions
           const { count: teamCount } = await supabase
             .from('teams')
             .select('*', { count: 'exact', head: true })
-            .eq('zone_id', zone.id);
+            .in('region_id', regionIds.length > 0 ? regionIds : ['']);
 
+          // Count DSRs through TLs in these regions
+          const { data: tlsData } = await supabase
+            .from('team_leaders')
+            .select('id')
+            .in('region_id', regionIds.length > 0 ? regionIds : ['']);
+          
+          const tlIds = tlsData?.map(tl => tl.id) || [];
+          
           const { count: dsrCount } = await supabase
             .from('dsrs')
             .select('*', { count: 'exact', head: true })
-            .eq('zone_id', zone.id);
+            .in('tl_id', tlIds.length > 0 ? tlIds : ['']);
 
           return {
             ...zone,
