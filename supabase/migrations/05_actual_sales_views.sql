@@ -1,17 +1,19 @@
 -- Create views to calculate actual sales for each role hierarchy
 
--- 1. RSM Actual Sales (sum of all TSM sales in their zone)
+-- 1. RSM Actual Sales (sum of all sales in their zone via regions)
 CREATE OR REPLACE VIEW rsm_actual_sales AS
 SELECT 
   m.id as rsm_id,
   m.user_id,
   m.zone_id,
-  COALESCE(SUM(s.total_amount), 0) as actual_sales
+  COALESCE(SUM(s.commission_amount), 0) as actual_sales
 FROM 
   managers m
-LEFT JOIN sales s ON s.zone_id = m.zone_id 
-  AND s.status = 'verified'
-  AND DATE_TRUNC('month', s.sale_date) = DATE_TRUNC('month', CURRENT_DATE)
+LEFT JOIN regions r ON r.zone_id = m.zone_id
+LEFT JOIN sales s ON s.region_id = r.id 
+  AND s.tl_verified = true
+  AND s.admin_approved = true
+  AND DATE_TRUNC('month', s.created_at) = DATE_TRUNC('month', CURRENT_DATE)
 WHERE 
   m.manager_type = 'RSM'
 GROUP BY 
@@ -24,14 +26,21 @@ SELECT
   m.user_id,
   m.zone_id,
   m.territories,
-  COALESCE(SUM(s.total_amount), 0) as actual_sales
+  COALESCE(SUM(s.commission_amount), 0) as actual_sales
 FROM 
   managers m
-LEFT JOIN sales s ON s.territory IN (
-    SELECT unnest(m.territories)
+LEFT JOIN territories t ON t.id = ANY(
+    -- Convert territory string format "zone_id-territory_name" to territory UUIDs
+    SELECT ter.id 
+    FROM territories ter 
+    WHERE ter.region_id IN (
+      SELECT r.id FROM regions r WHERE r.zone_id = m.zone_id
+    )
   )
-  AND s.status = 'verified'
-  AND DATE_TRUNC('month', s.sale_date) = DATE_TRUNC('month', CURRENT_DATE)
+LEFT JOIN sales s ON s.region_id = t.region_id
+  AND s.tl_verified = true
+  AND s.admin_approved = true
+  AND DATE_TRUNC('month', s.created_at) = DATE_TRUNC('month', CURRENT_DATE)
 WHERE 
   m.manager_type = 'TSM'
 GROUP BY 
@@ -43,14 +52,15 @@ SELECT
   tl.id as tl_id,
   tl.user_id,
   tl.territory_id,
-  COALESCE(SUM(s.total_amount), 0) as actual_sales
+  COALESCE(SUM(s.commission_amount), 0) as actual_sales
 FROM 
   team_leaders tl
-LEFT JOIN teams t ON t.team_leader_id = tl.id
+LEFT JOIN teams t ON t.tl_id = tl.id
 LEFT JOIN dsrs d ON d.team_id = t.id
 LEFT JOIN sales s ON s.dsr_id = d.id
-  AND s.status = 'verified'
-  AND DATE_TRUNC('month', s.sale_date) = DATE_TRUNC('month', CURRENT_DATE)
+  AND s.tl_verified = true
+  AND s.admin_approved = true
+  AND DATE_TRUNC('month', s.created_at) = DATE_TRUNC('month', CURRENT_DATE)
 WHERE 
   tl.territory_id IS NOT NULL
 GROUP BY 
@@ -61,6 +71,7 @@ CREATE OR REPLACE VIEW de_actual_sales AS
 SELECT 
   de.id as de_id,
   de.user_id,
+  de.zone_id,
   de.territory_id,
   COALESCE(SUM(ags.sale_amount), 0) as actual_sales
 FROM 
@@ -69,7 +80,7 @@ LEFT JOIN agents ag ON ag.de_id = de.id
 LEFT JOIN agent_sales ags ON ags.agent_id = ag.id
   AND DATE_TRUNC('month', ags.sale_date) = DATE_TRUNC('month', CURRENT_DATE)
 GROUP BY 
-  de.id, de.user_id, de.territory_id;
+  de.id, de.user_id, de.zone_id, de.territory_id;
 
 -- Create function to get manager with actual sales
 CREATE OR REPLACE FUNCTION get_managers_with_sales()
