@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -55,19 +56,36 @@ interface TSMPerformance {
 }
 
 export default function ManagerSalesTeam() {
+  const { user } = useAuth();
   const [loading, setLoading] = useState(true);
+  const [currentManagerInfo, setCurrentManagerInfo] = useState<any>(null);
   const [teamPerformance, setTeamPerformance] = useState<TeamPerformance[]>([]);
   const [tlPerformance, setTLPerformance] = useState<TLPerformance[]>([]);
   const [tsmPerformance, setTSMPerformance] = useState<TSMPerformance[]>([]);
   const [dsrDetails, setDSRDetails] = useState<DSRDetails[]>([]);
 
   useEffect(() => {
-    fetchSalesTeamData();
-  }, []);
+    if (user) {
+      fetchSalesTeamData();
+    }
+  }, [user]);
 
   const fetchSalesTeamData = async () => {
     try {
       setLoading(true);
+
+      // Get current user's manager info
+      const { data: managerData, error: managerInfoError } = await supabase
+        .from('managers')
+        .select('id, manager_type, zone_id, territory_ids')
+        .eq('user_id', user?.id)
+        .single();
+
+      if (managerInfoError && managerInfoError.code !== 'PGRST116') {
+        console.error('Error fetching manager info:', managerInfoError);
+      }
+
+      setCurrentManagerInfo(managerData);
 
       // Fetch all DSRs with their relationships
       const { data: dsrs, error: dsrError } = await supabase
@@ -232,8 +250,8 @@ export default function ManagerSalesTeam() {
 
       setDSRDetails(dsrDetailsList);
 
-      // Fetch TSM/RSM performance
-      const { data: managers, error: managerError } = await supabase
+      // Fetch TSM/RSM performance based on current user's role
+      let managersQuery = supabase
         .from('managers')
         .select(`
           id,
@@ -247,6 +265,27 @@ export default function ManagerSalesTeam() {
             name
           )
         `);
+
+      // If current user is RSM, show only TSMs in their zone/territories
+      if (managerData && managerData.manager_type === 'RSM') {
+        // RSM should see TSMs in their zone or territories
+        if (managerData.zone_id) {
+          managersQuery = managersQuery
+            .eq('zone_id', managerData.zone_id)
+            .eq('manager_type', 'TSM');
+        } else if (managerData.territory_ids && managerData.territory_ids.length > 0) {
+          // Show TSMs who manage territories within RSM's territory list
+          managersQuery = managersQuery
+            .eq('manager_type', 'TSM')
+            .overlaps('territory_ids', managerData.territory_ids);
+        }
+      }
+      // If TSM, show their own data only
+      else if (managerData && managerData.manager_type === 'TSM') {
+        managersQuery = managersQuery.eq('id', managerData.id);
+      }
+
+      const { data: managers, error: managerError } = await managersQuery;
 
       if (managerError) throw managerError;
 
@@ -500,8 +539,14 @@ export default function ManagerSalesTeam() {
 
           <Card>
             <CardHeader>
-              <CardTitle>TSM/RSM Performance & Territories</CardTitle>
-              <p className="text-sm text-muted-foreground">Territory Sales Managers and Regional Sales Managers</p>
+              <CardTitle>
+                {currentManagerInfo?.manager_type === 'RSM' ? 'TSM Performance Under Your Management' : 'TSM/RSM Performance & Territories'}
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                {currentManagerInfo?.manager_type === 'RSM' 
+                  ? 'Territory Sales Managers reporting to you'
+                  : 'Territory Sales Managers and Regional Sales Managers'}
+              </p>
             </CardHeader>
             <CardContent>
               <Table>
@@ -523,7 +568,11 @@ export default function ManagerSalesTeam() {
                   {tsmPerformance.length === 0 ? (
                     <TableRow>
                       <TableCell colSpan={10} className="text-center text-muted-foreground py-8">
-                        No TSM/RSM data available
+                        {currentManagerInfo?.manager_type === 'RSM' 
+                          ? 'No TSMs found under your management. Make sure TSMs are assigned to your zone/territories.'
+                          : currentManagerInfo?.manager_type === 'TSM'
+                          ? 'Your TSM performance data will appear here.'
+                          : 'No TSM/RSM data available'}
                       </TableCell>
                     </TableRow>
                   ) : (
