@@ -38,6 +38,7 @@ import { toast } from 'sonner';
 interface StockItem {
   id: string;
   stock_id: string;
+  serialNumber?: string;
   type: string;
   batch: string;
   status: string;
@@ -111,6 +112,8 @@ export function DSRStock({ onNavigate }: DSRStockProps = {}) {
         .select(`
           id,
           stock_id,
+          serial_number,
+          smartcard_number,
           type,
           status,
           created_at,
@@ -147,10 +150,11 @@ export function DSRStock({ onNavigate }: DSRStockProps = {}) {
         );
       }
 
-      // Transform data - FIXED: Use stock_id as smartcard number
+      // Transform data - Use actual serial_number and smartcard_number from database
       const transformedStock: StockItem[] = (stockData || []).map((item: any) => {
-        // Extract smartcard number from stock_id
-        const smartcardNumber = item.stock_id || `STOCK-${item.id.substring(0, 8)}`;
+        // Use database fields directly
+        const serialNumber = item.serial_number || item.stock_id || `STOCK-${item.id.substring(0, 8)}`;
+        const smartcardNumber = item.smartcard_number || 'N/A';
         
         // Extract batch number - handle the nested structure properly
         const batchNumber = item.stock_batches?.[0]?.batch_number || 
@@ -161,9 +165,10 @@ export function DSRStock({ onNavigate }: DSRStockProps = {}) {
         return {
           id: item.id,
           stock_id: item.id, // Use the stock record ID
+          serialNumber: serialNumber,
           type: item.type || 'Unknown',
           batch: batchNumber,
-          smartcardNumber: smartcardNumber, // Use stock_id as smartcard number
+          smartcardNumber: smartcardNumber,
           status: item.status,
           date: item.date_assigned ? new Date(item.date_assigned).toLocaleDateString() : new Date(item.created_at).toLocaleDateString(),
           quantity: 1,
@@ -355,13 +360,19 @@ export function DSRStock({ onNavigate }: DSRStockProps = {}) {
                     <Package className="h-5 w-5 text-warning" />
                   </div>
                   <div>
-                    <p className="font-medium text-foreground">ID: {item.id.substring(0, 8)}</p>
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <CreditCard className="h-4 w-4" />
-                      <span>{item.smartcardNumber}</span>
+                    <p className="font-medium text-foreground">{item.type}</p>
+                    <div className="flex items-center gap-3 text-sm text-muted-foreground mt-1">
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs">SN:</span>
+                        <span className="font-mono">{item.serialNumber}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <CreditCard className="h-3 w-3" />
+                        <span className="font-mono">{item.smartcardNumber}</span>
+                      </div>
                     </div>
-                    <p className="text-sm text-muted-foreground">
-                      {item.type} • Batch: {item.batch}
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Batch: {item.batch}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       Assigned by: {item.assignedBy}
@@ -421,6 +432,7 @@ export function DSRStock({ onNavigate }: DSRStockProps = {}) {
           <TableHeader>
             <TableRow className="border-border/50 hover:bg-transparent">
               <TableHead className="text-muted-foreground">Type</TableHead>
+              <TableHead className="text-muted-foreground">Serial Number</TableHead>
               <TableHead className="text-muted-foreground">Smartcard</TableHead>
               <TableHead className="text-muted-foreground">Batch</TableHead>
               <TableHead className="text-muted-foreground">Status</TableHead>
@@ -432,7 +444,7 @@ export function DSRStock({ onNavigate }: DSRStockProps = {}) {
           <TableBody>
             {filteredStock.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                   No stock items found
                 </TableCell>
               </TableRow>
@@ -443,6 +455,11 @@ export function DSRStock({ onNavigate }: DSRStockProps = {}) {
                     <Badge variant="outline" className="border-primary text-primary">
                       {item.type}
                     </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <span className="font-mono text-sm text-foreground">
+                      {item.serialNumber}
+                    </span>
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
