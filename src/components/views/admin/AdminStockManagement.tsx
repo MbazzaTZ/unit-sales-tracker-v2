@@ -104,6 +104,27 @@ export function AdminStockManagement() {
       if (stockError) throw stockError;
       if (!stockData || stockData.length === 0) return [];
       
+      // Get unique region IDs
+      const regionIds = stockData
+        .map(s => s.region_id)
+        .filter(Boolean)
+        .filter((v, i, a) => a.indexOf(v) === i);
+      
+      // Fetch regions
+      let regionMap: Record<string, any> = {};
+      if (regionIds.length > 0) {
+        const { data: regionsData } = await supabase
+          .from('regions')
+          .select('id, name, code')
+          .in('id', regionIds);
+        
+        if (regionsData) {
+          regionsData.forEach(r => {
+            regionMap[r.id] = r;
+          });
+        }
+      }
+      
       // Get unique TL IDs
       const tlIds = stockData
         .map(s => s.assigned_to_tl)
@@ -140,20 +161,26 @@ export function AdminStockManagement() {
       
       // Merge data
       return stockData.map(stock => {
-        if (!stock.assigned_to_tl) return stock;
+        const result: any = { ...stock };
         
-        const tl = tls?.find(t => t.id === stock.assigned_to_tl);
-        if (!tl) return stock;
+        // Add region info
+        if (stock.region_id && regionMap[stock.region_id]) {
+          result.region = regionMap[stock.region_id];
+        }
         
-        const profile = profiles.find(p => p.id === tl.user_id);
-        
-        return {
-          ...stock,
-          assigned_tl: {
-            id: tl.id,
-            profiles: profile || null
+        // Add TL info
+        if (stock.assigned_to_tl) {
+          const tl = tls?.find(t => t.id === stock.assigned_to_tl);
+          if (tl) {
+            const profile = profiles.find(p => p.id === tl.user_id);
+            result.assigned_tl = {
+              id: tl.id,
+              profiles: profile || null
+            };
           }
-        };
+        }
+        
+        return result;
       });
     }
   });
@@ -258,7 +285,7 @@ export function AdminStockManagement() {
   // Add single stock mutation
   const addStockMutation = useMutation({
     mutationFn: async (stockData: { 
-      stock_id: string; 
+      stock_id?: string; 
       type: string;
       serial_number?: string;
       smartcard_number?: string;
@@ -829,6 +856,7 @@ export function AdminStockManagement() {
                   <TableHead className="text-muted-foreground">Serial Number</TableHead>
                   <TableHead className="text-muted-foreground">Smartcard</TableHead>
                   <TableHead className="text-muted-foreground">Type</TableHead>
+                  <TableHead className="text-muted-foreground">Region</TableHead>
                   <TableHead className="text-muted-foreground">Batch</TableHead>
                   <TableHead className="text-muted-foreground">Assigned To</TableHead>
                   <TableHead className="text-muted-foreground">Status</TableHead>
@@ -849,6 +877,16 @@ export function AdminStockManagement() {
                     </TableCell>
                     <TableCell className="text-foreground">
                       <Badge variant="outline">{item.type}</Badge>
+                    </TableCell>
+                    <TableCell className="text-foreground">
+                      {item.region ? (
+                        <div className="flex flex-col">
+                          <span className="text-sm font-medium">{item.region.name}</span>
+                          <span className="text-xs text-muted-foreground">{item.region.code}</span>
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {item.batch?.batch_number || '-'}
