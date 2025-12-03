@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, Users, Package, TrendingUp } from 'lucide-react';
+import { Loader2, DollarSign, Users, Package, TrendingUp } from 'lucide-react';
 import { MetricCard } from '@/components/dashboard/MetricCard';
 
 interface DashboardMetrics {
@@ -245,6 +245,39 @@ export default function ManagerDashboard() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Quick Actions */}
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card className="cursor-pointer hover:bg-accent transition-colors">
+          <CardContent className="pt-6">
+            <div className="text-center">
+              <Package className="w-12 h-12 mx-auto mb-2 text-primary" />
+              <h3 className="font-semibold">Stock Management</h3>
+              <p className="text-sm text-muted-foreground">View inventory status</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="cursor-pointer hover:bg-accent transition-colors">
+          <CardContent className="pt-6">
+            <div className="text-center">
+              <Users className="w-12 h-12 mx-auto mb-2 text-primary" />
+              <h3 className="font-semibold">Sales Teams</h3>
+              <p className="text-sm text-muted-foreground">View team performance</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="cursor-pointer hover:bg-accent transition-colors">
+          <CardContent className="pt-6">
+            <div className="text-center">
+              <DollarSign className="w-12 h-12 mx-auto mb-2 text-primary" />
+              <h3 className="font-semibold">Commission Reports</h3>
+              <p className="text-sm text-muted-foreground">View DSR commissions</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
