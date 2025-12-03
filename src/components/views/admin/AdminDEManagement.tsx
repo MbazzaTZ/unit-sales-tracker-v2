@@ -436,3 +436,5 @@ export const AdminDEManagement = () => {
     </div>
   );
 };
+
+export default AdminDEManagement;
