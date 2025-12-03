@@ -385,7 +385,7 @@ export function DSRAddSale({ onNavigate }: DSRAddSaleProps) {
                                   <span className="font-medium">{stock.name}</span>
                                 </div>
                                 <div className="text-xs text-muted-foreground">
-                                  {stock.smartcard_number} • Qty: {stock.quantity} • TZS {stock.price.toLocaleString()}
+                                  {stock.smartcard_number} • Qty: 1 • {stock.name}
                                 </div>
                               </div>
                             </SelectItem>

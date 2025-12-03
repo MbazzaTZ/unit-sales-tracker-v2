@@ -237,9 +237,9 @@ export function DSRStock({ onNavigate }: DSRStockProps = {}) {
   };
 
   const getStockCount = () => {
-    const inHand = myStock.filter(s => s.status === 'in-hand').reduce((sum, s) => sum + s.quantity, 0);
-    const soldPaid = myStock.filter(s => s.status === 'sold').reduce((sum, s) => sum + s.quantity, 0);
-    const soldUnpaid = myStock.filter(s => s.status === 'sold-unpaid').reduce((sum, s) => sum + s.quantity, 0);
+    const inHand = myStock.filter(s => s.status === 'in-hand').length;
+    const soldPaid = myStock.filter(s => s.status === 'sold').length;
+    const soldUnpaid = myStock.filter(s => s.status === 'sold-unpaid').length;
     return { inHand, soldPaid, soldUnpaid, total: inHand + soldPaid + soldUnpaid };
   };
 

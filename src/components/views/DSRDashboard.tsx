@@ -84,14 +84,14 @@ export function DSRDashboard({ onNavigate }: DSRDashboardProps) {
       setDsrId(dsrData.id);
       setDsrName(profile?.full_name || 'DSR');
 
-      // Fetch stock in hand
+      // Fetch stock in hand (each stock item is 1 unit)
       const { data: stockData, error: stockError } = await supabase
         .from('stock')
-        .select('quantity')
+        .select('id')
         .eq('assigned_to_dsr', dsrData.id)
         .in('status', ['assigned-dsr', 'in-hand']);
 
-      const stockInHand = stockData?.reduce((sum, item) => sum + item.quantity, 0) || 0;
+      const stockInHand = stockData?.length || 0;
 
       // Fetch sales data
       const { data: salesData, error: salesError } = await supabase
