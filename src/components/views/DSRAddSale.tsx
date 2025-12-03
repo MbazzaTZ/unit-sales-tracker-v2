@@ -195,17 +195,40 @@ export function DSRAddSale({ onNavigate }: DSRAddSaleProps) {
     setSubmitting(true);
 
     try {
+      console.log('🔍 Debug stockType:', {
+        stockType,
+        stockTypeType: typeof stockType,
+        stock: stock,
+        selectedStockId,
+      });
+
+      // Extract short code from stockType (handles both "FS" and "Full Set (FS)" formats)
+      let saleType: string = stockType;
+      if (stockType.includes('(')) {
+        // Extract code from parentheses: "Full Set (FS)" -> "FS"
+        const match = stockType.match(/\(([^)]+)\)/);
+        saleType = match ? match[1] : stockType;
+      }
+      // Handle DVS -> DO conversion
+      if (saleType === 'DVS') {
+        saleType = 'DO';
+      }
+
+      console.log('🔍 Extracted saleType:', saleType);
+
       // Create sale record
       const saleInsertData: any = {
         dsr_id: dsrId,
         tl_id: tlId,
         sale_id: `SALE-${Date.now()}`,
-        sale_type: stockType === 'DVS' ? 'DO' : stockType,
+        sale_type: saleType,
         smart_card_number: stockType === 'DVS' ? manualSerialNumber.trim() : stock!.smartcard_number,
         sn_number: stockType === 'DVS' ? manualSerialNumber.trim() : stock!.smartcard_number,
         package_option: packageType,
         payment_status: paymentStatus,
       };
+
+      console.log('🔍 Debug saleInsertData:', saleInsertData);
 
       // Only add stock_id for FS/DO (link to the actual stock record)
       if (stockType !== 'DVS' && selectedStockId) {

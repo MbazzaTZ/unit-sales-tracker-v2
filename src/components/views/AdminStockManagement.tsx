@@ -40,7 +40,11 @@ import { useToast } from '@/hooks/use-toast';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 
-const STOCK_TYPES = ['Full Set (FS)', 'Decoder Only (DO)', 'Digital Virtual Stock (DVS)'];
+const STOCK_TYPES = [
+  { value: 'FS', label: 'Full Set (FS)' },
+  { value: 'DO', label: 'Decoder Only (DO)' },
+  { value: 'DVS', label: 'Digital Virtual Stock (DVS)' }
+];
 
 const statusConfig: Record<string, { label: string; className: string }> = {
   'unassigned': { label: 'Unassigned', className: 'bg-muted text-muted-foreground' },
@@ -342,7 +346,7 @@ export function AdminStockManagement() {
                     </SelectTrigger>
                     <SelectContent>
                       {STOCK_TYPES.map(type => (
-                        <SelectItem key={type} value={type}>{type}</SelectItem>
+                        <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
