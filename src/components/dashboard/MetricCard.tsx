@@ -3,7 +3,7 @@ import { LucideIcon } from 'lucide-react';
 
 interface MetricCardProps {
   title: string;
-  value: number | string;
+  value: number | string | undefined;
   icon: LucideIcon;
   trend?: {
     value: number;
@@ -18,7 +18,7 @@ const variantStyles = {
   success: 'border-success/30 success-glow',
   warning: 'border-warning/30 warning-glow',
   danger: 'border-destructive/30 danger-glow',
-  info: 'border-info/30',
+  info: 'border-info/30 info-glow',
 };
 
 const iconVariantStyles = {
@@ -29,16 +29,21 @@ const iconVariantStyles = {
   info: 'bg-info/10 text-info',
 };
 
-export function MetricCard({ 
-  title, 
-  value, 
-  icon: Icon, 
-  trend, 
+export function MetricCard({
+  title,
+  value,
+  icon: Icon,
+  trend,
   variant = 'default',
-  className 
+  className,
 }: MetricCardProps) {
+  const displayValue =
+    typeof value === 'number'
+      ? value.toLocaleString()
+      : value || '0';
+
   return (
-    <div 
+    <div
       className={cn(
         'glass rounded-xl p-5 border transition-all duration-300 hover:scale-[1.02] animate-fade-in',
         variantStyles[variant],
@@ -47,24 +52,37 @@ export function MetricCard({
     >
       <div className="flex items-start justify-between">
         <div className="space-y-2">
-          <p className="text-sm font-medium text-muted-foreground">{title}</p>
-          <p className="text-3xl font-bold tracking-tight text-foreground animate-count-up">
-            {typeof value === 'number' ? value.toLocaleString() : value}
+          {/* Title */}
+          <p className="text-sm font-medium text-muted-foreground">
+            {title}
           </p>
+
+          {/* Value */}
+          <p className="text-3xl font-bold tracking-tight text-foreground animate-count-up">
+            {displayValue}
+          </p>
+
+          {/* Trend */}
           {trend && (
-            <p className={cn(
-              'text-xs font-medium flex items-center gap-1',
-              trend.isPositive ? 'text-success' : 'text-destructive'
-            )}>
+            <p
+              className={cn(
+                'text-xs font-medium flex items-center gap-1',
+                trend.isPositive ? 'text-success' : 'text-destructive'
+              )}
+            >
               <span>{trend.isPositive ? '↑' : '↓'}</span>
               {Math.abs(trend.value)}% from last period
             </p>
           )}
         </div>
-        <div className={cn(
-          'p-3 rounded-lg',
-          iconVariantStyles[variant]
-        )}>
+
+        {/* Icon */}
+        <div
+          className={cn(
+            'p-3 rounded-lg',
+            iconVariantStyles[variant]
+          )}
+        >
           <Icon className="h-6 w-6" />
         </div>
       </div>

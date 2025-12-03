@@ -20,75 +20,109 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
+
 export function AdminApprovals() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Fetch sales pending admin approval (TL verified, paid only)
+  // -------------------------------------------------------
+  // FETCH PENDING SALES
+  // -------------------------------------------------------
   const { data: pendingSales = [], isLoading } = useQuery({
     queryKey: ['pending_approvals'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('sales')
-        .select(`*, team:teams(name), region:regions(code)`)
+        .select(`
+          *,
+          team:teams(name, zone_name)
+        `)
         .eq('tl_verified', true)
         .eq('admin_approved', false)
         .eq('payment_status', 'paid')
         .order('created_at', { ascending: false });
-      
+
       if (error) throw error;
-      
-      // Get DSR info
+
+      // Fetch DSR names
       const dsrIds = data.map(s => s.dsr_id).filter(Boolean);
-      const { data: dsrs } = await supabase.from('dsrs').select('id, user_id').in('id', dsrIds);
+      const { data: dsrs } = await supabase
+        .from('dsrs')
+        .select('id, user_id')
+        .in('id', dsrIds);
+
       const userIds = dsrs?.map(d => d.user_id) || [];
-      const { data: profiles } = await supabase.from('profiles').select('id, full_name').in('id', userIds);
-      
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .in('id', userIds);
+
       return data.map(sale => {
         const dsr = dsrs?.find(d => d.id === sale.dsr_id);
         const profile = profiles?.find(p => p.id === dsr?.user_id);
-        return { ...sale, dsr_name: profile?.full_name || '-' };
+        return {
+          ...sale,
+          dsr_name: profile?.full_name || '-'
+        };
       });
-    }
+    },
   });
 
-  // Fetch approved sales
+  // -------------------------------------------------------
+  // FETCH APPROVED SALES
+  // -------------------------------------------------------
   const { data: approvedSales = [] } = useQuery({
     queryKey: ['approved_sales'],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('sales')
-        .select(`*, team:teams(name), region:regions(code)`)
+        .select(`
+          *,
+          team:teams(name, zone_name)
+        `)
         .eq('admin_approved', true)
         .order('admin_approved_at', { ascending: false })
         .limit(50);
-      
+
       if (error) throw error;
-      
+
       const dsrIds = data.map(s => s.dsr_id).filter(Boolean);
-      const { data: dsrs } = await supabase.from('dsrs').select('id, user_id').in('id', dsrIds);
+      const { data: dsrs } = await supabase
+        .from('dsrs')
+        .select('id, user_id')
+        .in('id', dsrIds);
+
       const userIds = dsrs?.map(d => d.user_id) || [];
-      const { data: profiles } = await supabase.from('profiles').select('id, full_name').in('id', userIds);
-      
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, full_name')
+        .in('id', userIds);
+
       return data.map(sale => {
         const dsr = dsrs?.find(d => d.id === sale.dsr_id);
         const profile = profiles?.find(p => p.id === dsr?.user_id);
-        return { ...sale, dsr_name: profile?.full_name || '-' };
+
+        return {
+          ...sale,
+          dsr_name: profile?.full_name || '-',
+        };
       });
-    }
+    },
   });
 
-  // Approve mutation
+  // -------------------------------------------------------
+  // APPROVE SALE
+  // -------------------------------------------------------
   const approveMutation = useMutation({
     mutationFn: async (saleId: string) => {
       const { error } = await supabase
         .from('sales')
-        .update({ 
+        .update({
           admin_approved: true,
-          admin_approved_at: new Date().toISOString()
+          admin_approved_at: new Date().toISOString(),
         })
         .eq('id', saleId);
-      
+
       if (error) throw error;
     },
     onSuccess: () => {
@@ -97,18 +131,26 @@ export function AdminApprovals() {
       toast({ title: 'Sale approved' });
     },
     onError: (error: Error) => {
-      toast({ title: 'Error approving sale', description: error.message, variant: 'destructive' });
-    }
+      toast({
+        title: 'Error approving sale',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
   });
 
-  // Reject mutation (sets admin_approved to false, stays pending)
+  // -------------------------------------------------------
+  // REJECT SALE (returns to TL)
+  // -------------------------------------------------------
   const rejectMutation = useMutation({
     mutationFn: async (saleId: string) => {
       const { error } = await supabase
         .from('sales')
-        .update({ tl_verified: false })
+        .update({
+          tl_verified: false,
+        })
         .eq('id', saleId);
-      
+
       if (error) throw error;
     },
     onSuccess: () => {
@@ -116,15 +158,24 @@ export function AdminApprovals() {
       toast({ title: 'Sale rejected and sent back to TL' });
     },
     onError: (error: Error) => {
-      toast({ title: 'Error rejecting sale', description: error.message, variant: 'destructive' });
-    }
+      toast({
+        title: 'Error rejecting sale',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
   });
 
+  // -------------------------------------------------------
+  // UI RENDER
+  // -------------------------------------------------------
   return (
     <div className="p-6 space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Sales Approvals</h1>
-        <p className="text-muted-foreground">Approve verified paid sales from Team Leaders</p>
+        <p className="text-muted-foreground">
+          Approve Team Leader–verified sales
+        </p>
       </div>
 
       <Tabs defaultValue="pending" className="space-y-4">
@@ -132,11 +183,15 @@ export function AdminApprovals() {
           <TabsTrigger value="pending">
             Pending ({pendingSales.length})
           </TabsTrigger>
+
           <TabsTrigger value="approved">
             Approved
           </TabsTrigger>
         </TabsList>
 
+        {/* ------------------------------------------------ */}
+        {/* PENDING TAB */}
+        {/* ------------------------------------------------ */}
         <TabsContent value="pending">
           <div className="glass rounded-xl border border-border/50">
             {isLoading ? (
@@ -151,39 +206,42 @@ export function AdminApprovals() {
             ) : (
               <Table>
                 <TableHeader>
-                  <TableRow className="border-border/50 hover:bg-transparent">
-                    <TableHead className="text-muted-foreground">Sale ID</TableHead>
-                    <TableHead className="text-muted-foreground">DSR</TableHead>
-                    <TableHead className="text-muted-foreground">Team</TableHead>
-                    <TableHead className="text-muted-foreground">Smart Card</TableHead>
-                    <TableHead className="text-muted-foreground">Type</TableHead>
-                    <TableHead className="text-muted-foreground">Region</TableHead>
-                    <TableHead className="text-muted-foreground text-right">Actions</TableHead>
+                  <TableRow>
+                    <TableHead>Sale ID</TableHead>
+                    <TableHead>DSR</TableHead>
+                    <TableHead>Team</TableHead>
+                    <TableHead>Smart Card</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Zone</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
+
                 <TableBody>
                   {pendingSales.map((sale) => (
-                    <TableRow key={sale.id} className="border-border/50 hover:bg-secondary/30">
-                      <TableCell className="font-mono font-medium text-foreground">{sale.sale_id}</TableCell>
-                      <TableCell className="text-foreground">{sale.dsr_name}</TableCell>
-                      <TableCell className="text-muted-foreground">{sale.team?.name || '-'}</TableCell>
-                      <TableCell className="font-mono text-sm">{sale.smart_card_number}</TableCell>
+                    <TableRow key={sale.id}>
+                      <TableCell className="font-mono">{sale.sale_id}</TableCell>
+                      <TableCell>{sale.dsr_name}</TableCell>
+                      <TableCell>{sale.team?.name || '-'}</TableCell>
+                      <TableCell>{sale.smart_card_number}</TableCell>
                       <TableCell>
                         <Badge variant="outline">{sale.sale_type}</Badge>
                       </TableCell>
-                      <TableCell className="text-muted-foreground">{sale.region?.code || '-'}</TableCell>
+                      <TableCell>{sale.team?.zone_name}</TableCell>
+
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
-                          <Button 
-                            size="sm" 
+                          <Button
+                            size="sm"
                             className="bg-success hover:bg-success/90"
                             onClick={() => approveMutation.mutate(sale.id)}
                             disabled={approveMutation.isPending}
                           >
                             <Check className="h-4 w-4" />
                           </Button>
-                          <Button 
-                            size="sm" 
+
+                          <Button
+                            size="sm"
                             variant="outline"
                             className="border-destructive text-destructive hover:bg-destructive/10"
                             onClick={() => rejectMutation.mutate(sale.id)}
@@ -201,6 +259,9 @@ export function AdminApprovals() {
           </div>
         </TabsContent>
 
+        {/* ------------------------------------------------ */}
+        {/* APPROVED TAB */}
+        {/* ------------------------------------------------ */}
         <TabsContent value="approved">
           <div className="glass rounded-xl border border-border/50">
             {approvedSales.length === 0 ? (
@@ -211,23 +272,26 @@ export function AdminApprovals() {
             ) : (
               <Table>
                 <TableHeader>
-                  <TableRow className="border-border/50 hover:bg-transparent">
-                    <TableHead className="text-muted-foreground">Sale ID</TableHead>
-                    <TableHead className="text-muted-foreground">DSR</TableHead>
-                    <TableHead className="text-muted-foreground">Team</TableHead>
-                    <TableHead className="text-muted-foreground">Smart Card</TableHead>
-                    <TableHead className="text-muted-foreground">Approved</TableHead>
+                  <TableRow>
+                    <TableHead>Sale ID</TableHead>
+                    <TableHead>DSR</TableHead>
+                    <TableHead>Team</TableHead>
+                    <TableHead>Smart Card</TableHead>
+                    <TableHead>Approved</TableHead>
                   </TableRow>
                 </TableHeader>
+
                 <TableBody>
                   {approvedSales.map((sale) => (
-                    <TableRow key={sale.id} className="border-border/50 hover:bg-secondary/30">
-                      <TableCell className="font-mono font-medium text-foreground">{sale.sale_id}</TableCell>
-                      <TableCell className="text-foreground">{sale.dsr_name}</TableCell>
-                      <TableCell className="text-muted-foreground">{sale.team?.name || '-'}</TableCell>
-                      <TableCell className="font-mono text-sm">{sale.smart_card_number}</TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {sale.admin_approved_at && new Date(sale.admin_approved_at).toLocaleDateString()}
+                    <TableRow key={sale.id}>
+                      <TableCell className="font-mono">{sale.sale_id}</TableCell>
+                      <TableCell>{sale.dsr_name}</TableCell>
+                      <TableCell>{sale.team?.name || '-'}</TableCell>
+                      <TableCell>{sale.smart_card_number}</TableCell>
+
+                      <TableCell>
+                        {sale.admin_approved_at &&
+                          new Date(sale.admin_approved_at).toLocaleDateString()}
                       </TableCell>
                     </TableRow>
                   ))}

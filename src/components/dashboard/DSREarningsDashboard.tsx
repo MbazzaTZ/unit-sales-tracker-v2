@@ -1,11 +1,16 @@
-import { useEffect, useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Progress } from '@/components/ui/progress';
-import { Badge } from '@/components/ui/badge';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/contexts/AuthContext';
-import { TrendingUp, DollarSign, ShoppingCart, Gift, Loader2 } from 'lucide-react';
-import { BONUS_CONFIG } from '@/data/mockData';
+import { useEffect, useState } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
+import { Badge } from "@/components/ui/badge";
+import { supabase } from "@/integrations/supabase/client";
+import { Loader2, TrendingUp, DollarSign, ShoppingCart, Gift } from "lucide-react";
+import { BONUS_CONFIG } from "@/data/mockData";
 
 interface EarningsData {
   totalSales: number;
@@ -34,74 +39,76 @@ export function DSREarningsDashboard({ dsrId }: DSREarningsDashboardProps) {
   });
 
   useEffect(() => {
-    if (dsrId) {
-      fetchEarnings();
-    } else {
-      setLoading(false);
-    }
+    if (dsrId) fetchEarnings();
+    else setLoading(false);
   }, [dsrId]);
 
   async function fetchEarnings() {
-    if (!dsrId) {
-      setLoading(false);
-      return;
-    }
-
     try {
       setLoading(true);
 
-      // Fetch earnings from view
-      const { data: earningsData, error } = await supabase
-        .from('dsr_earnings_view')
-        .select('*')
-        .eq('dsr_id', dsrId)
+      // 1. Fetch earnings from dsr_earnings_view
+      const { data: viewData, error: viewError } = await supabase
+        .from("dsr_earnings_view")
+        .select("*")
+        .eq("dsr_id", dsrId)
         .maybeSingle();
 
-      if (error) {
-        console.error('Error fetching earnings:', error);
-        setLoading(false);
-        return;
+      if (viewError) {
+        console.error("Earnings view error:", viewError);
       }
 
-      // Fetch pending commission
+      const totalSales = viewData?.total_sales || 0;
+      const mtdSales = viewData?.mtd_sales || 0;
+      const totalEarnings = viewData?.total_earnings || 0;
+      const mtdEarnings = viewData?.mtd_earnings || 0;
+
+      // 2. Fetch pending commission
       const { data: pendingData } = await supabase
-        .from('sales')
-        .select('total_commission')
-        .eq('dsr_id', dsrId)
-        .in('commission_status', ['pending', 'pending-payment']);
+        .from("sales")
+        .select("total_commission")
+        .eq("dsr_id", dsrId)
+        .eq("payment_status", "paid")
+        .eq("admin_approved", false); // Pending approval
 
-      const pendingCommission = pendingData?.reduce((sum, sale) => sum + (sale.total_commission || 0), 0) || 0;
+      const pendingCommission =
+        pendingData?.reduce(
+          (sum, s) => sum + (s.total_commission || 0),
+          0
+        ) || 0;
 
-      // Calculate bonus progress
-      const mtdSales = earningsData?.mtd_sales || 0;
-      const bonusProgress = (mtdSales % BONUS_CONFIG.salesThreshold) / BONUS_CONFIG.salesThreshold * 100;
-      const nextBonusIn = BONUS_CONFIG.salesThreshold - (mtdSales % BONUS_CONFIG.salesThreshold);
+      // 3. Bonus logic
+      const bonusProgress =
+        (mtdSales % BONUS_CONFIG.salesThreshold) /
+        BONUS_CONFIG.salesThreshold *
+        100;
 
+      const nextBonusIn =
+        BONUS_CONFIG.salesThreshold - (mtdSales % BONUS_CONFIG.salesThreshold);
+
+      // 4. Set state
       setEarnings({
-        totalSales: earningsData?.total_sales || 0,
-        mtdSales: earningsData?.mtd_sales || 0,
-        totalEarnings: earningsData?.total_earnings || 0,
-        mtdEarnings: earningsData?.mtd_earnings || 0,
+        totalSales,
+        mtdSales,
+        totalEarnings,
+        mtdEarnings,
         pendingCommission,
         bonusProgress,
         nextBonusIn,
       });
-    } catch (error) {
-      console.error('Error fetching earnings:', error);
+    } catch (err) {
+      console.error("Earnings fetch error:", err);
     } finally {
       setLoading(false);
     }
   }
 
-  // Don't show anything if no dsrId provided
-  if (!dsrId) {
-    return null;
-  }
+  if (!dsrId) return null;
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-48">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
   }
@@ -111,9 +118,9 @@ export function DSREarningsDashboard({ dsrId }: DSREarningsDashboardProps) {
       {/* MTD Earnings */}
       <Card className="relative overflow-hidden">
         <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full -mr-16 -mt-16" />
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-sm font-medium">MTD Earnings</CardTitle>
-          <TrendingUp className="h-4 w-4 text-primary" />
+          <TrendingUp className="w-4 h-4 text-primary" />
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold text-primary">
@@ -125,12 +132,12 @@ export function DSREarningsDashboard({ dsrId }: DSREarningsDashboardProps) {
         </CardContent>
       </Card>
 
-      {/* Total Lifetime Earnings */}
+      {/* Total Earnings */}
       <Card className="relative overflow-hidden">
         <div className="absolute top-0 right-0 w-32 h-32 bg-green-500/5 rounded-full -mr-16 -mt-16" />
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-sm font-medium">Total Earnings</CardTitle>
-          <DollarSign className="h-4 w-4 text-green-600" />
+          <DollarSign className="w-4 h-4 text-green-600" />
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold text-green-600">
@@ -145,16 +152,16 @@ export function DSREarningsDashboard({ dsrId }: DSREarningsDashboardProps) {
       {/* Pending Commission */}
       <Card className="relative overflow-hidden">
         <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full -mr-16 -mt-16" />
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-sm font-medium">Pending</CardTitle>
-          <ShoppingCart className="h-4 w-4 text-amber-600" />
+          <ShoppingCart className="w-4 h-4 text-amber-600" />
         </CardHeader>
         <CardContent>
           <div className="text-2xl font-bold text-amber-600">
             TZS {earnings.pendingCommission.toLocaleString()}
           </div>
           <p className="text-xs text-muted-foreground mt-1">
-            Awaiting payment/approval
+            Awaiting approval/payment
           </p>
         </CardContent>
       </Card>
@@ -162,25 +169,31 @@ export function DSREarningsDashboard({ dsrId }: DSREarningsDashboardProps) {
       {/* Bonus Progress */}
       <Card className="relative overflow-hidden">
         <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/5 rounded-full -mr-16 -mt-16" />
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-sm font-medium">Bonus Progress</CardTitle>
-          <Gift className="h-4 w-4 text-purple-600" />
+          <Gift className="w-4 h-4 text-purple-600" />
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">
-                {earnings.nextBonusIn === 0 ? 'Bonus Unlocked! 🎉' : `${earnings.nextBonusIn} more ${earnings.nextBonusIn === 1 ? 'sale' : 'sales'}`}
+                {earnings.nextBonusIn === 0
+                  ? "Bonus Unlocked!"
+                  : `${earnings.nextBonusIn} more sales`}
               </span>
+
               {earnings.nextBonusIn === 0 && (
-                <Badge variant="default" className="bg-purple-600">
+                <Badge className="bg-purple-600">
                   TZS {BONUS_CONFIG.bonusAmount.toLocaleString()}
                 </Badge>
               )}
             </div>
+
             <Progress value={earnings.bonusProgress} className="h-2" />
+
             <p className="text-xs text-muted-foreground">
-              Every {BONUS_CONFIG.salesThreshold} sales = TZS {BONUS_CONFIG.bonusAmount.toLocaleString()} bonus
+              Every {BONUS_CONFIG.salesThreshold} sales = TZS{" "}
+              {BONUS_CONFIG.bonusAmount.toLocaleString()} bonus
             </p>
           </div>
         </CardContent>

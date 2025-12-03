@@ -31,16 +31,19 @@ import { Badge } from '@/components/ui/badge';
 import { MapPin, Plus, Edit, Trash2, Loader2, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
+/* ---------------------------------------------
+   TYPE DEFINITIONS
+----------------------------------------------*/
 interface TerritoryTSM {
   territory: string;
   tsm_name: string;
 }
 
-interface Region {
+interface Zone {
   id: string;
   name: string;
   code: string;
-  rsm_name?: string;
+  zonal_manager?: string; // RSM renamed → Zonal Manager
   territories?: TerritoryTSM[];
   created_at: string;
   tl_count?: number;
@@ -48,54 +51,62 @@ interface Region {
   dsr_count?: number;
 }
 
-export function AdminRegionManagement() {
-  const [regions, setRegions] = useState<Region[]>([]);
+/* ---------------------------------------------
+   COMPONENT START
+----------------------------------------------*/
+export function AdminZoneManagement() {
+  const [zones, setZones] = useState<Zone[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingRegion, setEditingRegion] = useState<Region | null>(null);
-  const [formData, setFormData] = useState({ 
-    name: '', 
-    code: '', 
-    rsm_name: ''
+  const [editingZone, setEditingZone] = useState<Zone | null>(null);
+  const [formData, setFormData] = useState({
+    name: '',
+    code: '',
+    zonal_manager: '',
   });
-  const [territories, setTerritories] = useState<TerritoryTSM[]>([{ territory: '', tsm_name: '' }]);
+  const [territories, setTerritories] = useState<TerritoryTSM[]>([
+    { territory: '', tsm_name: '' },
+  ]);
   const [submitting, setSubmitting] = useState(false);
   const { toast } = useToast();
 
+  /* ---------------------------------------------
+     FETCH ZONES
+  ----------------------------------------------*/
   useEffect(() => {
-    fetchRegions();
+    fetchZones();
   }, []);
 
-  async function fetchRegions() {
+  async function fetchZones() {
     try {
       setLoading(true);
-      const { data: regionsData, error } = await supabase
-        .from('regions')
+
+      const { data: zoneData, error } = await supabase
+        .from('zones')
         .select('*')
         .order('name');
 
       if (error) throw error;
 
-      // Fetch counts for each region
-      const regionsWithCounts = await Promise.all(
-        (regionsData || []).map(async (region) => {
+      const zonesWithCounts = await Promise.all(
+        (zoneData || []).map(async (zone) => {
           const { count: tlCount } = await supabase
             .from('team_leaders')
             .select('*', { count: 'exact', head: true })
-            .eq('region_id', region.id);
+            .eq('zone_id', zone.id);
 
           const { count: teamCount } = await supabase
             .from('teams')
             .select('*', { count: 'exact', head: true })
-            .eq('region_id', region.id);
+            .eq('zone_id', zone.id);
 
           const { count: dsrCount } = await supabase
             .from('dsrs')
             .select('*', { count: 'exact', head: true })
-            .eq('region_id', region.id);
+            .eq('zone_id', zone.id);
 
           return {
-            ...region,
+            ...zone,
             tl_count: tlCount || 0,
             team_count: teamCount || 0,
             dsr_count: dsrCount || 0,
@@ -103,62 +114,66 @@ export function AdminRegionManagement() {
         })
       );
 
-      setRegions(regionsWithCounts);
+      setZones(zonesWithCounts);
     } catch (error) {
-      console.error('Error fetching regions:', error);
+      console.error('Error fetching zones:', error);
       toast({
         variant: 'destructive',
         title: 'Error',
-        description: 'Failed to load regions',
+        description: 'Failed to load zones',
       });
     } finally {
       setLoading(false);
     }
   }
 
+  /* ---------------------------------------------
+     HANDLE SAVE (CREATE / UPDATE ZONE)
+  ----------------------------------------------*/
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    
+
     if (!formData.name.trim() || !formData.code.trim()) {
       toast({
         variant: 'destructive',
         title: 'Validation Error',
-        description: 'Please fill in Regional Name and Code',
+        description: 'Please fill in Zone Name and Code',
       });
       return;
     }
 
-    // Filter out empty territories
-    const validTerritories = territories.filter(t => t.territory.trim() || t.tsm_name.trim());
+    const validTerritories = territories.filter(
+      (t) => t.territory.trim() || t.tsm_name.trim()
+    );
 
     setSubmitting(true);
     try {
-      if (editingRegion) {
-        // Update existing region
+      if (editingZone) {
+        // Update existing Zone
         const { error } = await supabase
-          .from('regions')
+          .from('zones')
           .update({
             name: formData.name,
             code: formData.code.toUpperCase(),
-            rsm_name: formData.rsm_name || null,
+            zonal_manager: formData.zonal_manager || null,
             territories: validTerritories.length > 0 ? validTerritories : [],
           })
-          .eq('id', editingRegion.id);
+          .eq('id', editingZone.id);
 
         if (error) throw error;
 
         toast({
           title: 'Success',
-          description: 'Region updated successfully',
+          description: 'Zone updated successfully',
         });
       } else {
-        // Create new region
+        // Create new zone
         const { error } = await supabase
-          .from('regions')
+          .from('zones')
           .insert({
             name: formData.name,
             code: formData.code.toUpperCase(),
-            rsm_name: formData.rsm_name || null,
+            zonal_manager: formData.zonal_manager || null,
             territories: validTerritories.length > 0 ? validTerritories : [],
           });
 
@@ -166,25 +181,32 @@ export function AdminRegionManagement() {
 
         toast({
           title: 'Success',
-          description: 'Region created successfully',
+          description: 'Zone created successfully',
         });
       }
 
       setDialogOpen(false);
-      setFormData({ name: '', code: '', rsm_name: '' });
-      setTerritories([{ territory: '', tsm_name: '' }]);
-      setEditingRegion(null);
-      fetchRegions();
+      resetForm();
+      fetchZones();
     } catch (error: any) {
-      console.error('Error saving region:', error);
+      console.error('Error saving zone:', error);
       toast({
         variant: 'destructive',
         title: 'Error',
-        description: error.message || 'Failed to save region',
+        description: error.message || 'Failed to save zone',
       });
     } finally {
       setSubmitting(false);
     }
+  }
+
+  /* ---------------------------------------------
+     HELPERS
+  ----------------------------------------------*/
+  function resetForm() {
+    setFormData({ name: '', code: '', zonal_manager: '' });
+    setTerritories([{ territory: '', tsm_name: '' }]);
+    setEditingZone(null);
   }
 
   function addTerritory() {
@@ -203,66 +225,61 @@ export function AdminRegionManagement() {
     setTerritories(updated);
   }
 
-  async function handleDelete(region: Region) {
-    if (region.tl_count! > 0 || region.team_count! > 0 || region.dsr_count! > 0) {
+  async function handleDelete(zone: Zone) {
+    if (
+      (zone.tl_count || 0) > 0 ||
+      (zone.team_count || 0) > 0 ||
+      (zone.dsr_count || 0) > 0
+    ) {
       toast({
         variant: 'destructive',
         title: 'Cannot Delete',
-        description: 'This region has associated team leaders, teams, or DSRs. Please reassign them first.',
+        description:
+          'This zone has TLs, Teams, or DSRs. Reassign them first.',
       });
       return;
     }
 
-    if (!confirm(`Are you sure you want to delete ${region.name}?`)) {
-      return;
-    }
+    if (!confirm(`Delete Zone "${zone.name}"?`)) return;
 
     try {
-      const { error } = await supabase
-        .from('regions')
-        .delete()
-        .eq('id', region.id);
+      const { error } = await supabase.from('zones').delete().eq('id', zone.id);
 
       if (error) throw error;
 
       toast({
         title: 'Success',
-        description: 'Region deleted successfully',
+        description: 'Zone deleted successfully',
       });
 
-      fetchRegions();
+      fetchZones();
     } catch (error: any) {
-      console.error('Error deleting region:', error);
       toast({
         variant: 'destructive',
         title: 'Error',
-        description: error.message || 'Failed to delete region',
+        description: error.message || 'Failed to delete',
       });
     }
   }
 
-  function openEditDialog(region: Region) {
-    setEditingRegion(region);
-    setFormData({ 
-      name: region.name, 
-      code: region.code,
-      rsm_name: region.rsm_name || ''
+  function openEditDialog(zone: Zone) {
+    setEditingZone(zone);
+    setFormData({
+      name: zone.name,
+      code: zone.code,
+      zonal_manager: zone.zonal_manager || '',
     });
     setTerritories(
-      region.territories && region.territories.length > 0 
-        ? region.territories 
+      zone.territories && zone.territories.length > 0
+        ? zone.territories
         : [{ territory: '', tsm_name: '' }]
     );
     setDialogOpen(true);
   }
 
-  function closeDialog() {
-    setDialogOpen(false);
-    setEditingRegion(null);
-    setFormData({ name: '', code: '', rsm_name: '' });
-    setTerritories([{ territory: '', tsm_name: '' }]);
-  }
-
+  /* ---------------------------------------------
+     LOADING STATE
+  ----------------------------------------------*/
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -271,37 +288,45 @@ export function AdminRegionManagement() {
     );
   }
 
+  /* ---------------------------------------------
+     MAIN UI
+  ----------------------------------------------*/
   return (
     <div className="p-6 space-y-6">
-      {/* Page Header */}
+      {/* HEADER */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Region Management</h1>
-          <p className="text-muted-foreground">Manage regions and territories</p>
+          <h1 className="text-2xl font-bold text-foreground">Zone Management</h1>
+          <p className="text-muted-foreground">
+            Manage Zones, Territories & Assigned TSMs
+          </p>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
-            <Button onClick={() => closeDialog()}>
+            <Button onClick={() => resetForm()}>
               <Plus className="h-4 w-4 mr-2" />
-              Add Region
+              Add Zone
             </Button>
           </DialogTrigger>
+
+          {/* CREATE / EDIT FORM */}
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>{editingRegion ? 'Edit Region' : 'Add New Region'}</DialogTitle>
+              <DialogTitle>
+                {editingZone ? 'Edit Zone' : 'Add New Zone'}
+              </DialogTitle>
               <DialogDescription>
-                {editingRegion
-                  ? 'Update the region details below.'
-                  : 'Create a new region or territory.'}
+                Define Zone details, territories & assigned TSMs.
               </DialogDescription>
             </DialogHeader>
+
             <form onSubmit={handleSubmit}>
               <div className="space-y-4 py-4">
+                {/* Zone Name */}
                 <div className="space-y-2">
-                  <Label htmlFor="name">Regional Name *</Label>
+                  <Label>Zone Name *</Label>
                   <Input
-                    id="name"
-                    placeholder="e.g., Dar es Salaam"
+                    placeholder="e.g., Southern Zone"
                     value={formData.name}
                     onChange={(e) =>
                       setFormData({ ...formData, name: e.target.value })
@@ -309,36 +334,40 @@ export function AdminRegionManagement() {
                     required
                   />
                 </div>
+
+                {/* Zone Code */}
                 <div className="space-y-2">
-                  <Label htmlFor="code">Region Code *</Label>
+                  <Label>Zone Code *</Label>
                   <Input
-                    id="code"
-                    placeholder="e.g., DSM (3-4 letters)"
+                    placeholder="e.g., SZ"
                     value={formData.code}
                     onChange={(e) =>
-                      setFormData({ ...formData, code: e.target.value.toUpperCase() })
+                      setFormData({
+                        ...formData,
+                        code: e.target.value.toUpperCase(),
+                      })
                     }
                     maxLength={4}
                     required
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Short code for the region (will be converted to uppercase)
-                  </p>
                 </div>
+
+                {/* Zonal Manager */}
                 <div className="space-y-2">
-                  <Label htmlFor="rsm_name">RSM Name</Label>
+                  <Label>Zonal Manager (Optional)</Label>
                   <Input
-                    id="rsm_name"
-                    placeholder="Regional Sales Manager name"
-                    value={formData.rsm_name}
+                    placeholder="Enter Zonal Manager Name"
+                    value={formData.zonal_manager}
                     onChange={(e) =>
-                      setFormData({ ...formData, rsm_name: e.target.value })
+                      setFormData({ ...formData, zonal_manager: e.target.value })
                     }
                   />
                 </div>
+
+                {/* TERRITORIES */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <Label>Territories & TSMs</Label>
+                    <Label>Territories & Assigned TSM</Label>
                     <Button
                       type="button"
                       variant="outline"
@@ -349,25 +378,35 @@ export function AdminRegionManagement() {
                       Add Territory
                     </Button>
                   </div>
+
                   <div className="space-y-3 max-h-60 overflow-y-auto">
                     {territories.map((item, index) => (
                       <div key={index} className="flex gap-2 items-start">
                         <div className="flex-1 space-y-2">
                           <Input
-                            placeholder="Territory name"
+                            placeholder="Territory name (e.g., Iringa)"
                             value={item.territory}
                             onChange={(e) =>
-                              updateTerritory(index, 'territory', e.target.value)
+                              updateTerritory(
+                                index,
+                                'territory',
+                                e.target.value
+                              )
                             }
                           />
                           <Input
-                            placeholder="TSM name"
+                            placeholder="TSM Name"
                             value={item.tsm_name}
                             onChange={(e) =>
-                              updateTerritory(index, 'tsm_name', e.target.value)
+                              updateTerritory(
+                                index,
+                                'tsm_name',
+                                e.target.value
+                              )
                             }
                           />
                         </div>
+
                         {territories.length > 1 && (
                           <Button
                             type="button"
@@ -384,11 +423,12 @@ export function AdminRegionManagement() {
                   </div>
                 </div>
               </div>
+
               <DialogFooter>
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={closeDialog}
+                  onClick={() => setDialogOpen(false)}
                   disabled={submitting}
                 >
                   Cancel
@@ -399,8 +439,10 @@ export function AdminRegionManagement() {
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                       Saving...
                     </>
+                  ) : editingZone ? (
+                    'Update Zone'
                   ) : (
-                    <>{editingRegion ? 'Update' : 'Create'} Region</>
+                    'Create Zone'
                   )}
                 </Button>
               </DialogFooter>
@@ -409,64 +451,68 @@ export function AdminRegionManagement() {
         </Dialog>
       </div>
 
-      {/* Stats Cards */}
+      {/* STATS CARDS */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Regions</CardTitle>
+          <CardHeader>
+            <CardTitle>Total Zones</CardTitle>
             <MapPin className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{regions.length}</div>
+            <div className="text-2xl font-bold">{zones.length}</div>
           </CardContent>
         </Card>
+
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total TLs</CardTitle>
+          <CardHeader>
+            <CardTitle>Total TLs</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {regions.reduce((sum, r) => sum + (r.tl_count || 0), 0)}
+              {zones.reduce((sum, z) => sum + (z.tl_count || 0), 0)}
             </div>
           </CardContent>
         </Card>
+
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Teams</CardTitle>
+          <CardHeader>
+            <CardTitle>Total Teams</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {regions.reduce((sum, r) => sum + (r.team_count || 0), 0)}
+              {zones.reduce((sum, z) => sum + (z.team_count || 0), 0)}
             </div>
           </CardContent>
         </Card>
+
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total DSRs</CardTitle>
+          <CardHeader>
+            <CardTitle>Total DSRs</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {regions.reduce((sum, r) => sum + (r.dsr_count || 0), 0)}
+              {zones.reduce((sum, z) => sum + (z.dsr_count || 0), 0)}
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Regions Table */}
+      {/* ZONE TABLE */}
       <Card>
         <CardHeader>
-          <CardTitle>All Regions</CardTitle>
+          <CardTitle>All Zones</CardTitle>
           <CardDescription>
-            List of all regions and territories in the system
+            List of all zones, territories & assigned TSMs
           </CardDescription>
         </CardHeader>
+
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Region Name</TableHead>
+                <TableHead>Zone Name</TableHead>
                 <TableHead>Code</TableHead>
-                <TableHead>RSM Name</TableHead>
+                <TableHead>Zonal Manager</TableHead>
                 <TableHead>Territories</TableHead>
                 <TableHead className="text-center">TLs</TableHead>
                 <TableHead className="text-center">Teams</TableHead>
@@ -475,28 +521,40 @@ export function AdminRegionManagement() {
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
+
             <TableBody>
-              {regions.length === 0 ? (
+              {zones.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
-                    No regions found. Click "Add Region" to create one.
+                  <TableCell
+                    colSpan={9}
+                    className="text-center text-muted-foreground py-8"
+                  >
+                    No zones available.
                   </TableCell>
                 </TableRow>
               ) : (
-                regions.map((region) => (
-                  <TableRow key={region.id}>
-                    <TableCell className="font-medium">{region.name}</TableCell>
+                zones.map((zone) => (
+                  <TableRow key={zone.id}>
+                    <TableCell className="font-medium">{zone.name}</TableCell>
+
                     <TableCell>
-                      <Badge variant="outline">{region.code}</Badge>
+                      <Badge variant="outline">{zone.code}</Badge>
                     </TableCell>
-                    <TableCell className="text-sm">{region.rsm_name || '-'}</TableCell>
+
+                    <TableCell className="text-sm">{zone.zonal_manager || '-'}</TableCell>
+
                     <TableCell className="text-sm">
-                      {region.territories && region.territories.length > 0 ? (
+                      {zone.territories && zone.territories.length > 0 ? (
                         <div className="space-y-1">
-                          {region.territories.map((t, idx) => (
+                          {zone.territories.map((t, idx) => (
                             <div key={idx} className="text-xs">
                               <span className="font-medium">{t.territory}</span>
-                              {t.tsm_name && <span className="text-muted-foreground"> ({t.tsm_name})</span>}
+                              {t.tsm_name && (
+                                <span className="text-muted-foreground">
+                                  {' '}
+                                  (TSM: {t.tsm_name})
+                                </span>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -504,29 +562,29 @@ export function AdminRegionManagement() {
                         '-'
                       )}
                     </TableCell>
-                    <TableCell className="text-center">{region.tl_count}</TableCell>
-                    <TableCell className="text-center">{region.team_count}</TableCell>
-                    <TableCell className="text-center">{region.dsr_count}</TableCell>
+
+                    <TableCell className="text-center">{zone.tl_count}</TableCell>
+                    <TableCell className="text-center">{zone.team_count}</TableCell>
+                    <TableCell className="text-center">{zone.dsr_count}</TableCell>
+
                     <TableCell className="text-sm text-muted-foreground">
-                      {new Date(region.created_at).toLocaleDateString()}
+                      {new Date(zone.created_at).toLocaleDateString()}
                     </TableCell>
+
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => openEditDialog(region)}
-                        >
+                        <Button variant="ghost" size="sm" onClick={() => openEditDialog(zone)}>
                           <Edit className="h-4 w-4" />
                         </Button>
+
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleDelete(region)}
+                          onClick={() => handleDelete(zone)}
                           disabled={
-                            (region.tl_count || 0) > 0 ||
-                            (region.team_count || 0) > 0 ||
-                            (region.dsr_count || 0) > 0
+                            (zone.tl_count || 0) > 0 ||
+                            (zone.team_count || 0) > 0 ||
+                            (zone.dsr_count || 0) > 0
                           }
                         >
                           <Trash2 className="h-4 w-4" />
