@@ -67,6 +67,7 @@ export function AdminStockManagement() {
   const [selectedRegion, setSelectedRegion] = useState('');
   const [batchNumber, setBatchNumber] = useState('');
   const [csvData, setCsvData] = useState<{ 
+    stock_id?: string;
     batch_number: string;
     serial_number: string; 
     smartcard_number: string; 
@@ -379,6 +380,7 @@ export function AdminStockManagement() {
   const bulkAddStockMutation = useMutation({
     mutationFn: async ({ items, batchId }: { 
       items: { 
+        stock_id?: string;
         batch_number?: string;
         serial_number: string; 
         smartcard_number?: string; 
@@ -396,28 +398,53 @@ export function AdminStockManagement() {
       
       const regionMap: Record<string, string> = {};
       if (regionNames.length > 0) {
-        const { data: regionsData } = await supabase
+        // Get all regions first
+        const { data: allRegions } = await supabase
           .from('regions')
-          .select('id, name')
-          .in('name', regionNames);
+          .select('id, name, code');
         
-        regionsData?.forEach(r => {
-          regionMap[r.name] = r.id;
+        // Match regions case-insensitively
+        allRegions?.forEach(r => {
+          const matchingName = regionNames.find(
+            name => name.toLowerCase() === r.name.toLowerCase() || 
+                    name.toLowerCase() === r.code.toLowerCase()
+          );
+          if (matchingName) {
+            regionMap[matchingName] = r.id;
+          }
         });
+        
+        console.log('Region mapping:', regionMap);
       }
 
-      const stockItems = items.map(item => ({
-        // stock_id will be auto-generated based on type (e.g., FS2025-000001)
-        serial_number: item.serial_number,
-        smartcard_number: item.smartcard_number && item.smartcard_number.trim() !== '' ? item.smartcard_number : null,
-        type: item.type,
-        batch_id: batchId,
-        region_id: item.region ? regionMap[item.region] : null,
-        status: 'unassigned'
-      }));
+      const stockItems = items.map((item, index) => {
+        const stockItem: any = {
+          // Include stock_id if provided, otherwise will be auto-generated
+          serial_number: item.serial_number,
+          smartcard_number: item.smartcard_number && item.smartcard_number.trim() !== '' ? item.smartcard_number : null,
+          type: item.type,
+          batch_id: batchId,
+          status: 'unassigned'
+        };
+        
+        // Add stock_id if provided in Excel
+        if (item.stock_id && item.stock_id.trim() !== '') {
+          stockItem.stock_id = item.stock_id;
+        }
+        
+        // Add region if found
+        if (item.region && regionMap[item.region]) {
+          stockItem.region_id = regionMap[item.region];
+        } else if (item.region) {
+          console.warn(`Row ${index + 1}: Region "${item.region}" not found in database`);
+        }
+        
+        return stockItem;
+      });
       
       // Debug: Log upload info
       console.log(`Uploading ${stockItems.length} items to batch ${batchId}`);
+      console.log('Sample items (first 2):', stockItems.slice(0, 2));
 
       const { error } = await supabase
         .from('stock')
@@ -499,11 +526,12 @@ export function AdminStockManagement() {
             console.log('Excel columns found:', Object.keys(row));
           }
           
+          const stockId = row['Stock ID'] || row['stock_id'] || row['StockID'] || row['STOCK_ID'] || row['ID'] || '';
           const batchNum = row['Batch Number'] || row['Batch ID'] || row['batch_number'] || row['batch_id'] || row['BatchNumber'] || row['Batch'] || '';
-          const serialNum = row['Serial Number'] || row['serial_number'] || row['SerialNumber'] || row['SN'] || row['Stock ID'] || row['stock_id'] || row['Serial'] || row['SERIAL NUMBER'] || row['SERIAL_NUMBER'] || '';
+          const serialNum = row['Serial Number'] || row['serial_number'] || row['SerialNumber'] || row['SN'] || row['Serial'] || row['SERIAL NUMBER'] || row['SERIAL_NUMBER'] || '';
           const smartcardNum = row['Smartcard Number'] || row['Smart Card'] || row['smartcard_number'] || row['SmartcardNumber'] || row['SC'] || row['Smartcard'] || row['SMARTCARD NUMBER'] || row['SMARTCARD_NUMBER'] || '';
           const stockType = row['Type'] || row['type'] || row['Stock Type'] || row['stock_type'] || row['TYPE'] || '';
-          const region = row['Region'] || row['region'] || row['Territory'] || row['territory'] || row['REGION'] || '';
+          const region = row['Region'] || row['region'] || row['Territory'] || row['territory'] || row['REGION'] || row['Region Name'] || row['region_name'] || '';
           
           if (!serialNum || serialNum.toString().trim() === '') {
             console.warn(`Row ${index + 2}: Missing serial number. Available columns:`, Object.keys(row));
@@ -525,6 +553,7 @@ export function AdminStockManagement() {
           const trimmedSmartcard = smartcardNum ? smartcardNum.toString().trim() : '';
           
           return {
+            stock_id: stockId ? stockId.toString().trim() : '',
             batch_number: batchNum ? batchNum.toString().trim() : '',
             serial_number: serialNum.toString().trim(),
             smartcard_number: trimmedSmartcard,
