@@ -111,20 +111,31 @@ export function DSRStock({ onNavigate }: DSRStockProps = {}) {
           status,
           created_at,
           date_assigned,
+          assigned_by,
           batch_id,
           stock_batches (
             batch_number
-          ),
-          assigned_by_user:assigned_by(
-            profiles (
-              full_name
-            )
           )
         `)
         .eq('assigned_to_dsr', dsrData.id)
         .order('created_at', { ascending: false });
 
       if (stockError) throw stockError;
+
+      // Get unique assigned_by user IDs
+      const assignedByIds = [...new Set(stockData?.map(s => s.assigned_by).filter(Boolean))];
+      let assignedByNames: Record<string, string> = {};
+      
+      if (assignedByIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, full_name')
+          .in('id', assignedByIds);
+        
+        assignedByNames = Object.fromEntries(
+          profiles?.map(p => [p.id, p.full_name]) || []
+        );
+      }
 
       // Transform data
       const transformedStock: StockItem[] = (stockData || []).map((item: any) => ({
@@ -136,7 +147,7 @@ export function DSRStock({ onNavigate }: DSRStockProps = {}) {
         status: item.status,
         date: item.date_assigned ? new Date(item.date_assigned).toLocaleDateString() : new Date(item.created_at).toLocaleDateString(),
         quantity: 1,
-        assignedBy: item.assigned_by_user?.profiles?.full_name || 'Admin',
+        assignedBy: assignedByNames[item.assigned_by] || 'Admin',
       }));
 
       // All assigned-dsr stock is available for sale (no separate new/accepted states)
