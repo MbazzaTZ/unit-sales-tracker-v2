@@ -1,4 +1,33 @@
-# Welcome to your Lovable project
+# Unit Sales Tracker
+
+A comprehensive sales tracking and management system for DSTV unit sales.
+
+## 🚀 Quick Start - Database Setup
+
+**IMPORTANT:** After a fresh Supabase reset, follow these steps:
+
+### 1. Apply Database Migrations
+
+Go to **Supabase Dashboard → SQL Editor** and run these in order:
+
+1. **`supabase/migrations/00_master_schema.sql`** - Core database schema
+2. **`supabase/migrations/01_commission_system.sql`** - Commission system
+3. **`supabase/migrations/02_seed_data.sql`** - Sample data (optional)
+
+### 2. Create Admin User
+
+1. Sign up through the app
+2. Get your user UUID from Supabase → Authentication → Users
+3. Run in SQL Editor:
+
+```sql
+DELETE FROM user_roles WHERE user_id = 'YOUR_UUID' AND role = 'dsr';
+INSERT INTO user_roles (user_id, role) VALUES ('YOUR_UUID', 'admin');
+```
+
+### 3. Done! 🎉
+
+Your database is ready. See `supabase/migrations/README.md` for full documentation.
 
 ## Project info
 
