@@ -248,7 +248,8 @@ ALTER TABLE public.package_commission_rates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.dsr_bonus_tiers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.dstv_packages ENABLE ROW LEVEL SECURITY;
 
--- Create RLS policies for dstv_packages
+-- Create RLS policies for dstv_packages (drop if exists first)
+DROP POLICY IF EXISTS "Anyone can view active packages" ON public.dstv_packages;
 CREATE POLICY "Anyone can view active packages" ON public.dstv_packages
   FOR SELECT USING (is_active = TRUE);
 
