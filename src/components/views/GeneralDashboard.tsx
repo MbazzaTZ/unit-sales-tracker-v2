@@ -25,6 +25,20 @@ import {
   Cell
 } from 'recharts';
 
+interface RegionData {
+  id: string;
+  name: string;
+  code: string;
+  tlCount: number;
+  teamCount: number;
+  dsrCount: number;
+  stockInHand: number;
+  paidSales: number;
+  unpaidSales: number;
+  target: number;
+  achieved: number;
+}
+
 export function GeneralDashboard() {
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState({
@@ -35,9 +49,10 @@ export function GeneralDashboard() {
     totalStock: 0,
     targetAchievement: 0
   });
-  const [regions, setRegions] = useState<any[]>([]);
-  const [teamData, setTeamData] = useState<any[]>([]);
-  const [productData, setProductData] = useState<any[]>([]);
+  const [regions, setRegions] = useState<RegionData[]>([]);
+  const [teamData, setTeamData] = useState<{ team: string; target: number; achieved: number }[]>([]);
+  const [productData, setProductData] = useState<{ name: string; value: number; fill: string }[]>([]);
+  const [salesTrendData, setSalesTrendData] = useState<{ date: string; amount: number }[]>([]);
 
   useEffect(() => {
     fetchDashboardData();
@@ -48,7 +63,7 @@ export function GeneralDashboard() {
       // Fetch sales data
       const { data: sales, error: salesError } = await supabase
         .from('sales')
-        .select('sale_type, payment_status');
+        .select('sale_type, payment_status, region_id, created_at');
       
       if (salesError) throw salesError;
 
@@ -62,7 +77,7 @@ export function GeneralDashboard() {
       // Fetch stock data
       const { data: stock, error: stockError } = await supabase
         .from('stock')
-        .select('status, type');
+        .select('status, type, region_id');
       
       if (stockError) throw stockError;
 
@@ -133,16 +148,33 @@ export function GeneralDashboard() {
         })
       );
 
-      // Fetch teams data
+      // Fetch teams data - corrected query
       const { data: teams, error: teamsError } = await supabase
         .from('teams')
         .select(`
           name,
-          sales:sales(count),
+          region_id,
           team_leaders(monthly_target)
-        `);
+        `)
+        .limit(4);
       
       if (teamsError) throw teamsError;
+
+      // Get sales count for each team
+      const teamsWithSales = await Promise.all(
+        (teams || []).map(async (team) => {
+          const { count: salesCount } = await supabase
+            .from('sales')
+            .select('*', { count: 'exact', head: true })
+            .eq('region_id', team.region_id);
+
+          return {
+            team: team.name,
+            target: team.team_leaders?.[0]?.monthly_target || 100,
+            achieved: salesCount || 0
+          };
+        })
+      );
 
       // Calculate metrics
       const totalSales = sales?.length || 0;
@@ -158,6 +190,35 @@ export function GeneralDashboard() {
       
       const targetAchievement = totalStock > 0 ? Math.round((totalSales / totalStock) * 100) : 0;
 
+      // Create sales trend data for the last 30 days
+      const last30Days = Array.from({ length: 30 }, (_, i) => {
+        const date = new Date();
+        date.setDate(date.getDate() - (29 - i));
+        return date;
+      });
+
+      const trendData = last30Days.map(date => {
+        const dayStart = new Date(date);
+        dayStart.setHours(0, 0, 0, 0);
+        const dayEnd = new Date(date);
+        dayEnd.setHours(23, 59, 59, 999);
+
+        const daySales = sales?.filter(sale => {
+          const saleDate = new Date(sale.created_at!);
+          return saleDate >= dayStart && saleDate <= dayEnd;
+        }) || [];
+
+        const dayRevenue = daySales.reduce((sum, sale) => {
+          const revenue = sale.sale_type === 'DO' ? 25000 : 65000;
+          return sum + revenue;
+        }, 0);
+
+        return {
+          date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+          amount: dayRevenue
+        };
+      });
+
       setMetrics({
         totalSales,
         totalRevenue,
@@ -168,15 +229,8 @@ export function GeneralDashboard() {
       });
 
       setRegions(regionsWithData);
-
-      // Format team comparison data
-      const formattedTeams = teams?.slice(0, 4).map(t => ({
-        team: t.name,
-        target: t.team_leaders?.[0]?.monthly_target || 100,
-        achieved: Array.isArray(t.sales) ? t.sales.length : 0
-      })) || [];
-      
-      setTeamData(formattedTeams);
+      setTeamData(teamsWithSales);
+      setSalesTrendData(trendData);
 
       // Product distribution (DO vs FS)
       setProductData([
@@ -220,7 +274,7 @@ export function GeneralDashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         <MetricCard 
           title="Total Sales" 
-          value={metrics.totalSales} 
+          value={metrics.totalSales.toString()} 
           icon={ShoppingCart}
           trend={{ value: 12, isPositive: true }}
         />
@@ -228,31 +282,31 @@ export function GeneralDashboard() {
           title="Revenue" 
           value={`${(metrics.totalRevenue / 1000000).toFixed(1)}M TZS`}
           icon={DollarSign}
-          variant="success"
           trend={{ value: 8, isPositive: true }}
         />
         <MetricCard 
           title="Active DSRs" 
-          value={metrics.totalDSRs} 
+          value={metrics.totalDSRs.toString()} 
           icon={Users}
-          variant="info"
+          trend={{ value: 0, isPositive: true }}
         />
         <MetricCard 
           title="Stock In Hand" 
-          value={metrics.stockInHand} 
+          value={metrics.stockInHand.toString()} 
           icon={Package}
+          trend={{ value: 0, isPositive: true }}
         />
         <MetricCard 
           title="Target Achievement" 
           value={`${metrics.targetAchievement}%`}
           icon={Target}
-          variant="warning"
+          trend={{ value: metrics.targetAchievement, isPositive: metrics.targetAchievement >= 70 }}
         />
         <MetricCard 
           title="Total Stock" 
-          value={metrics.totalStock}
+          value={metrics.totalStock.toString()}
           icon={TrendingUp}
-          variant="success"
+          trend={{ value: 0, isPositive: true }}
         />
       </div>
 
@@ -272,8 +326,8 @@ export function GeneralDashboard() {
 
       {/* Sales Trend */}
       <div className="glass rounded-xl p-6 border border-border/50">
-        <h2 className="text-lg font-semibold text-foreground mb-4">Sales Trend</h2>
-        <SalesChart />
+        <h2 className="text-lg font-semibold text-foreground mb-4">Sales Trend (Last 30 Days)</h2>
+        <SalesChart data={salesTrendData} />
       </div>
 
       {/* Charts Row */}

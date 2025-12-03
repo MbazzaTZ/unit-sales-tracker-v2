@@ -66,15 +66,19 @@ export default function ManagerDashboard() {
       const monthlyRevenue = monthlySales.reduce((sum, sale) => sum + calculateRevenue(sale.sale_type), 0);
 
       // Get active DSRs count
-      const { count: dsrCount } = await supabase
+      const { count: dsrCount, error: dsrError } = await supabase
         .from('dsrs')
-        .select('*', { count: 'only' });
+        .select('*', { count: 'exact', head: true });
+
+      if (dsrError) throw dsrError;
 
       // Get stock in hand (each stock item is 1 unit)
-      const { data: stock } = await supabase
+      const { data: stock, error: stockError } = await supabase
         .from('stock')
         .select('id')
         .eq('status', 'assigned-dsr');
+
+      if (stockError) throw stockError;
 
       const stockInHand = stock?.length || 0;
 
@@ -140,29 +144,29 @@ export default function ManagerDashboard() {
           title="Total Sales"
           value={metrics.totalSales.toString()}
           icon={TrendingUp}
-          trend="All time sales count"
+          trend={{ value: 0, isPositive: true }}
         />
         <MetricCard
           title="Total Revenue"
           value={`TZS ${metrics.totalRevenue.toLocaleString()}`}
           icon={DollarSign}
-          trend="All time revenue"
+          trend={{ value: 0, isPositive: true }}
         />
         <MetricCard
           title="Active DSRs"
           value={metrics.activeDSRs.toString()}
           icon={Users}
-          trend="Field sales representatives"
+          trend={{ value: 0, isPositive: true }}
         />
         <MetricCard
           title="Stock In Hand"
           value={metrics.stockInHand.toString()}
           icon={Package}
-          trend="Available inventory"
+          trend={{ value: 0, isPositive: true }}
         />
       </div>
 
-      {/* Monthly Performance */}
+      {/* Monthly Performance - Added descriptive text here instead */}
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader>
@@ -191,7 +195,12 @@ export default function ManagerDashboard() {
           <CardTitle>Weekly Sales Trend</CardTitle>
         </CardHeader>
         <CardContent>
-          <SalesChart data={weeklyData} />
+          <SalesChart 
+            data={weeklyData.map(item => ({ 
+              date: item.day, 
+              amount: item.sales 
+            }))} 
+          />
         </CardContent>
       </Card>
 

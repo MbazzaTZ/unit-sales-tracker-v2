@@ -45,7 +45,7 @@ interface StockOption {
   price: number;
 }
 
-const STOCK_PRICES = {
+const STOCK_PRICES: Record<'FS' | 'DO' | 'DVS', number> = {
   FS: 65000,
   DO: 25000,
   DVS: 27500
@@ -549,7 +549,7 @@ export function DSRAddSale({ onNavigate }: DSRAddSaleProps) {
                     </SelectItem>
                     <SelectItem value="unpaid">
                       <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 rounded-full bg-danger" />
+                        <div className="w-2 h-2 rounded-full bg-destructive" />
                         Unpaid (Stock on hold)
                       </div>
                     </SelectItem>

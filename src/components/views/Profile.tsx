@@ -1,317 +1,448 @@
 import { useState, useEffect } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { useToast } from '@/hooks/use-toast';
-import { useAuth } from '@/contexts/AuthContext';
+import { MetricCard } from '@/components/dashboard/MetricCard';
+import { SalesChart } from '@/components/dashboard/SalesChart';
+import { RegionCard } from '@/components/dashboard/RegionCard';
 import { supabase } from '@/integrations/supabase/client';
-import { Loader2, User, Lock, Mail, Phone, MapPin, Building } from 'lucide-react';
+import { 
+  Package, 
+  ShoppingCart, 
+  Users, 
+  TrendingUp,
+  DollarSign,
+  Target,
+  Loader2
+} from 'lucide-react';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  ResponsiveContainer,
+  Tooltip,
+  Legend,
+  PieChart,
+  Pie,
+  Cell
+} from 'recharts';
 
-export function Profile() {
-  const { user, profile, userRole } = useAuth();
-  const { toast } = useToast();
-  
-  // Profile information
-  const [fullName, setFullName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [region, setRegion] = useState('');
-  const [territory, setTerritory] = useState('');
-  const [profileLoading, setProfileLoading] = useState(false);
-  
-  // Password change
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [passwordLoading, setPasswordLoading] = useState(false);
+interface RegionData {
+  id: string;
+  name: string;
+  code: string;
+  tlCount: number;
+  teamCount: number;
+  dsrCount: number;
+  stockInHand: number;
+  paidSales: number;
+  unpaidSales: number;
+  target: number;
+  achieved: number;
+}
 
-  // Load profile data
+export function GeneralDashboard() {
+  const [loading, setLoading] = useState(true);
+  const [metrics, setMetrics] = useState({
+    totalSales: 0,
+    totalRevenue: 0,
+    totalDSRs: 0,
+    stockInHand: 0,
+    totalStock: 0,
+    targetAchievement: 0
+  });
+  const [regions, setRegions] = useState<RegionData[]>([]);
+  const [teamData, setTeamData] = useState<{ team: string; target: number; achieved: number }[]>([]);
+  const [productData, setProductData] = useState<{ name: string; value: number; fill: string }[]>([]);
+  const [salesTrendData, setSalesTrendData] = useState<{ date: string; amount: number }[]>([]);
+
   useEffect(() => {
-    if (profile) {
-      setFullName(profile.full_name || '');
-      setPhone(profile.phone || '');
-      setRegion(profile.region || '');
-      setTerritory(profile.territory || '');
-    }
-  }, [profile]);
+    fetchDashboardData();
+  }, []);
 
-  async function handleUpdateProfile(e: React.FormEvent) {
-    e.preventDefault();
-    if (!user) return;
-
-    setProfileLoading(true);
+  async function fetchDashboardData() {
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          full_name: fullName,
-          phone: phone,
-          region: region,
-          territory: territory,
-          updated_at: new Date().toISOString(),
+      // Fetch sales data
+      const { data: sales, error: salesError } = await supabase
+        .from('sales')
+        .select('sale_type, payment_status, region_id, created_at');
+      
+      if (salesError) throw salesError;
+
+      // Fetch DSRs count
+      const { count: dsrCount, error: dsrError } = await supabase
+        .from('dsrs')
+        .select('*', { count: 'exact', head: true });
+      
+      if (dsrError) throw dsrError;
+
+      // Fetch stock data
+      const { data: stock, error: stockError } = await supabase
+        .from('stock')
+        .select('status, type, region_id');
+      
+      if (stockError) throw stockError;
+
+      // Fetch regions with detailed aggregated data
+      const { data: regionsData, error: regionsError } = await supabase
+        .from('regions')
+        .select(`
+          id,
+          name,
+          code
+        `);
+      
+      if (regionsError) throw regionsError;
+
+      // Fetch aggregated data for each region
+      const regionsWithData = await Promise.all(
+        (regionsData || []).map(async (region) => {
+          // Count TLs in region
+          const { count: tlCount } = await supabase
+            .from('team_leaders')
+            .select('*', { count: 'exact', head: true })
+            .eq('region_id', region.id);
+
+          // Count teams in region
+          const { count: teamCount } = await supabase
+            .from('teams')
+            .select('*', { count: 'exact', head: true })
+            .eq('region_id', region.id);
+
+          // Count DSRs in region
+          const { count: dsrCount } = await supabase
+            .from('dsrs')
+            .select('*', { count: 'exact', head: true })
+            .eq('region_id', region.id);
+
+          // Get sales data for region
+          const { data: regionSales } = await supabase
+            .from('sales')
+            .select('payment_status')
+            .eq('region_id', region.id);
+
+          const paidSales = regionSales?.filter(s => s.payment_status === 'paid').length || 0;
+          const unpaidSales = regionSales?.filter(s => s.payment_status === 'unpaid').length || 0;
+
+          // Count stock in region
+          const { data: regionStock } = await supabase
+            .from('stock')
+            .select('status')
+            .eq('region_id', region.id);
+
+          const stockInHand = regionStock?.filter(s => 
+            s.status === 'assigned-dsr' || s.status === 'assigned-team'
+          ).length || 0;
+
+          return {
+            id: region.id,
+            name: region.name,
+            code: region.code,
+            tlCount: tlCount || 0,
+            teamCount: teamCount || 0,
+            dsrCount: dsrCount || 0,
+            stockInHand,
+            paidSales,
+            unpaidSales,
+            target: 100, // Can be configured per region
+            achieved: paidSales + unpaidSales
+          };
         })
-        .eq('id', user.id);
+      );
 
-      if (error) throw error;
+      // Fetch teams data - corrected query
+      const { data: teams, error: teamsError } = await supabase
+        .from('teams')
+        .select(`
+          name,
+          region_id,
+          team_leaders(monthly_target)
+        `)
+        .limit(4);
+      
+      if (teamsError) throw teamsError;
 
-      toast({
-        title: 'Profile updated',
-        description: 'Your profile information has been updated successfully.',
+      // Get sales count for each team
+      const teamsWithSales = await Promise.all(
+        (teams || []).map(async (team) => {
+          const { count: salesCount } = await supabase
+            .from('sales')
+            .select('*', { count: 'exact', head: true })
+            .eq('region_id', team.region_id);
+
+          return {
+            team: team.name,
+            target: team.team_leaders?.[0]?.monthly_target || 100,
+            achieved: salesCount || 0
+          };
+        })
+      );
+
+      // Calculate metrics
+      const totalSales = sales?.length || 0;
+      const doSales = sales?.filter(s => s.sale_type === 'DO').length || 0;
+      const fsSales = sales?.filter(s => s.sale_type === 'FS').length || 0;
+      const paidSales = sales?.filter(s => s.payment_status === 'paid').length || 0;
+      
+      // Calculate revenue (DO: 25,000 TZS, FS: 65,000 TZS)
+      const totalRevenue = (doSales * 25000) + (fsSales * 65000);
+      
+      const stockInHand = stock?.filter(s => s.status === 'assigned-dsr' || s.status === 'assigned-team').length || 0;
+      const totalStock = stock?.length || 0;
+      
+      const targetAchievement = totalStock > 0 ? Math.round((totalSales / totalStock) * 100) : 0;
+
+      // Create sales trend data for the last 30 days
+      const last30Days = Array.from({ length: 30 }, (_, i) => {
+        const date = new Date();
+        date.setDate(date.getDate() - (29 - i));
+        return date;
       });
-    } catch (error: any) {
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: error.message || 'Failed to update profile',
+
+      const trendData = last30Days.map(date => {
+        const dayStart = new Date(date);
+        dayStart.setHours(0, 0, 0, 0);
+        const dayEnd = new Date(date);
+        dayEnd.setHours(23, 59, 59, 999);
+
+        const daySales = sales?.filter(sale => {
+          const saleDate = new Date(sale.created_at!);
+          return saleDate >= dayStart && saleDate <= dayEnd;
+        }) || [];
+
+        const dayRevenue = daySales.reduce((sum, sale) => {
+          const revenue = sale.sale_type === 'DO' ? 25000 : 65000;
+          return sum + revenue;
+        }, 0);
+
+        return {
+          date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+          amount: dayRevenue
+        };
       });
+
+      setMetrics({
+        totalSales,
+        totalRevenue,
+        totalDSRs: dsrCount || 0,
+        stockInHand,
+        totalStock,
+        targetAchievement
+      });
+
+      setRegions(regionsWithData);
+      setTeamData(teamsWithSales);
+      setSalesTrendData(trendData);
+
+      // Product distribution (DO vs FS)
+      setProductData([
+        { name: 'DO Sales', value: doSales, fill: 'hsl(217, 91%, 60%)' },
+        { name: 'FS Sales', value: fsSales, fill: 'hsl(142, 71%, 45%)' },
+        { name: 'Paid', value: paidSales, fill: 'hsl(262, 83%, 58%)' },
+        { name: 'Pending', value: totalSales - paidSales, fill: 'hsl(38, 92%, 50%)' }
+      ]);
+
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
     } finally {
-      setProfileLoading(false);
+      setLoading(false);
     }
   }
 
-  async function handleChangePassword(e: React.FormEvent) {
-    e.preventDefault();
-    if (!user) return;
-
-    // Validation
-    if (!newPassword || newPassword.length < 6) {
-      toast({
-        variant: 'destructive',
-        title: 'Invalid password',
-        description: 'Password must be at least 6 characters long.',
-      });
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      toast({
-        variant: 'destructive',
-        title: 'Passwords do not match',
-        description: 'New password and confirm password must match.',
-      });
-      return;
-    }
-
-    setPasswordLoading(true);
-    try {
-      const { error } = await supabase.auth.updateUser({
-        password: newPassword,
-      });
-
-      if (error) throw error;
-
-      toast({
-        title: 'Password changed',
-        description: 'Your password has been changed successfully.',
-      });
-
-      // Clear password fields
-      setCurrentPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
-    } catch (error: any) {
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: error.message || 'Failed to change password',
-      });
-    } finally {
-      setPasswordLoading(false);
-    }
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
   }
-
   return (
-    <div className="container mx-auto p-6 max-w-4xl">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold">Profile Settings</h1>
-        <p className="text-muted-foreground">Manage your account information and security</p>
+    <div className="p-6 space-y-6 overflow-y-auto">
+      {/* Page Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">General Overview</h1>
+          <p className="text-muted-foreground">Company-wide performance and insights</p>
+        </div>
+        <div className="text-right">
+          <p className="text-sm text-muted-foreground">Last updated</p>
+          <p className="text-sm font-medium text-foreground">
+            {new Date().toLocaleString()}
+          </p>
+        </div>
       </div>
 
-      <div className="grid gap-6">
-        {/* Account Information */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <User className="h-5 w-5" />
-              Account Information
-            </CardTitle>
-            <CardDescription>
-              View your account details and role
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label className="text-muted-foreground">Email Address</Label>
-                <div className="flex items-center gap-2 mt-1">
-                  <Mail className="h-4 w-4 text-muted-foreground" />
-                  <span className="font-medium">{user?.email}</span>
-                </div>
-              </div>
-              <div>
-                <Label className="text-muted-foreground">Role</Label>
-                <div className="flex items-center gap-2 mt-1">
-                  <Building className="h-4 w-4 text-muted-foreground" />
-                  <span className="font-medium capitalize">{userRole}</span>
-                </div>
-              </div>
+      {/* Key Metrics */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+        <MetricCard 
+          title="Total Sales" 
+          value={metrics.totalSales.toString()} 
+          icon={ShoppingCart}
+          trend={{ value: 12, isPositive: true }}
+        />
+        <MetricCard 
+          title="Revenue" 
+          value={`${(metrics.totalRevenue / 1000000).toFixed(1)}M TZS`}
+          icon={DollarSign}
+          trend={{ value: 8, isPositive: true }}
+        />
+        <MetricCard 
+          title="Active DSRs" 
+          value={metrics.totalDSRs.toString()} 
+          icon={Users}
+          trend={{ value: 0, isPositive: true }}
+        />
+        <MetricCard 
+          title="Stock In Hand" 
+          value={metrics.stockInHand.toString()} 
+          icon={Package}
+          trend={{ value: 0, isPositive: true }}
+        />
+        <MetricCard 
+          title="Target Achievement" 
+          value={`${metrics.targetAchievement}%`}
+          icon={Target}
+          trend={{ value: metrics.targetAchievement, isPositive: metrics.targetAchievement >= 70 }}
+        />
+        <MetricCard 
+          title="Total Stock" 
+          value={metrics.totalStock.toString()}
+          icon={TrendingUp}
+          trend={{ value: 0, isPositive: true }}
+        />
+      </div>
+
+      {/* Regional Performance */}
+      <div>
+        <h2 className="text-lg font-semibold text-foreground mb-4">Regional Overview</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+          {regions.map((region, index) => (
+            <RegionCard 
+              key={region.id} 
+              region={region} 
+              className={`animation-delay-${index * 100}`}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Sales Trend - Now with data prop */}
+      <div className="glass rounded-xl p-6 border border-border/50">
+        <h2 className="text-lg font-semibold text-foreground mb-4">Sales Trend (Last 30 Days)</h2>
+        <SalesChart data={salesTrendData} />
+      </div>
+
+      {/* Charts Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Team Performance Comparison */}
+        <div className="glass rounded-xl p-6 border border-border/50">
+          <h2 className="text-lg font-semibold text-foreground mb-4">Team Performance</h2>
+          <div className="h-[280px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={teamData}>
+                <XAxis 
+                  dataKey="team" 
+                  stroke="hsl(215, 20%, 55%)"
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis 
+                  stroke="hsl(215, 20%, 55%)"
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <Tooltip 
+                  contentStyle={{
+                    backgroundColor: 'hsl(222, 47%, 8%)',
+                    border: '1px solid hsl(217, 33%, 17%)',
+                    borderRadius: '8px',
+                    color: 'hsl(210, 40%, 98%)'
+                  }}
+                />
+                <Legend />
+                <Bar dataKey="target" fill="hsl(215, 20%, 55%)" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="achieved" fill="hsl(217, 91%, 60%)" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Product Distribution */}
+        <div className="glass rounded-xl p-6 border border-border/50">
+          <h2 className="text-lg font-semibold text-foreground mb-4">Sales Distribution</h2>
+          <div className="h-[280px] flex items-center justify-center">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={productData}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                  outerRadius={80}
+                  fill="#8884d8"
+                  dataKey="value"
+                >
+                  {productData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.fill} />
+                  ))}
+                </Pie>
+                <Tooltip 
+                  contentStyle={{
+                    backgroundColor: 'hsl(222, 47%, 8%)',
+                    border: '1px solid hsl(217, 33%, 17%)',
+                    borderRadius: '8px',
+                    color: 'hsl(210, 40%, 98%)'
+                  }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
+      {/* Summary Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="glass rounded-xl p-6 border border-border/50">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-muted-foreground">Average Sales/DSR</p>
+              <p className="text-2xl font-bold text-foreground mt-1">
+                {metrics.totalDSRs > 0 ? Math.round(metrics.totalSales / metrics.totalDSRs) : 0} units
+              </p>
             </div>
-          </CardContent>
-        </Card>
+            <div className="p-3 rounded-lg bg-primary/10">
+              <TrendingUp className="h-6 w-6 text-primary" />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground mt-2">Per DSR performance</p>
+        </div>
 
-        {/* Profile Information */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <User className="h-5 w-5" />
-              Personal Information
-            </CardTitle>
-            <CardDescription>
-              Update your personal details
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleUpdateProfile} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="fullName">Full Name</Label>
-                  <Input
-                    id="fullName"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="Enter your full name"
-                    required
-                  />
-                </div>
+        <div className="glass rounded-xl p-6 border border-border/50">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-muted-foreground">Sales Conversion</p>
+              <p className="text-2xl font-bold text-foreground mt-1">{metrics.targetAchievement}%</p>
+            </div>
+            <div className="p-3 rounded-lg bg-success/10">
+              <Target className="h-6 w-6 text-success" />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground mt-2">Sales vs Stock ratio</p>
+        </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Phone Number</Label>
-                  <div className="relative">
-                    <Phone className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="phone"
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      placeholder="+255 XXX XXX XXX"
-                      className="pl-10"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="region">Region</Label>
-                  <div className="relative">
-                    <MapPin className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="region"
-                      value={region}
-                      onChange={(e) => setRegion(e.target.value)}
-                      placeholder="Enter your region"
-                      className="pl-10"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="territory">Territory</Label>
-                  <div className="relative">
-                    <MapPin className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      id="territory"
-                      value={territory}
-                      onChange={(e) => setTerritory(e.target.value)}
-                      placeholder="Enter your territory"
-                      className="pl-10"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex justify-end">
-                <Button type="submit" disabled={profileLoading}>
-                  {profileLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Save Changes
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-
-        {/* Password Change */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Lock className="h-5 w-5" />
-              Change Password
-            </CardTitle>
-            <CardDescription>
-              Update your password to keep your account secure
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleChangePassword} className="space-y-4">
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="newPassword">New Password</Label>
-                  <Input
-                    id="newPassword"
-                    type="password"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="Enter new password (min 6 characters)"
-                    required
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="confirmPassword">Confirm New Password</Label>
-                  <Input
-                    id="confirmPassword"
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="Confirm new password"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end">
-                <Button type="submit" disabled={passwordLoading}>
-                  {passwordLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Change Password
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-
-        {/* Security Information */}
-        <Card className="border-amber-500/20 bg-amber-50 dark:bg-amber-950/10">
-          <CardHeader>
-            <CardTitle className="text-amber-600 dark:text-amber-500">Security Tips</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="space-y-2 text-sm text-amber-800 dark:text-amber-300">
-              <li className="flex items-start gap-2">
-                <span className="text-amber-600">•</span>
-                Use a strong password with at least 6 characters
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-amber-600">•</span>
-                Never share your password with anyone
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-amber-600">•</span>
-                Change your password regularly for better security
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-amber-600">•</span>
-                Log out from shared devices after use
-              </li>
-            </ul>
-          </CardContent>
-        </Card>
+        <div className="glass rounded-xl p-6 border border-border/50">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-muted-foreground">Active Regions</p>
+              <p className="text-2xl font-bold text-foreground mt-1">{regions.length}</p>
+            </div>
+            <div className="p-3 rounded-lg bg-info/10">
+              <Package className="h-6 w-6 text-info" />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground mt-2">Coverage areas</p>
+        </div>
       </div>
     </div>
   );
