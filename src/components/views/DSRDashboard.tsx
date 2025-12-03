@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { MetricCard } from '@/components/dashboard/MetricCard';
+import { DSREarningsDashboard } from '@/components/dashboard/DSREarningsDashboard';
 import { 
   Package, 
   CheckCircle, 
@@ -190,6 +191,9 @@ export function DSRDashboard({ onNavigate }: DSRDashboardProps) {
         <h1 className="text-2xl font-bold text-foreground">Welcome back, {dsrName}</h1>
         <p className="text-muted-foreground">Here's your performance overview</p>
       </div>
+
+      {/* Earnings Dashboard */}
+      <DSREarningsDashboard />
 
       {/* Metrics */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">

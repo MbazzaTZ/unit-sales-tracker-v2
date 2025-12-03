@@ -25,9 +25,11 @@ import {
   ArrowLeft,
   Check,
   Search,
-  CreditCard
+  CreditCard,
+  TrendingUp
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { DSTV_PACKAGES, COMMISSION_RATES } from '@/data/mockData';
 
 interface DSRAddSaleProps {
   onNavigate: (tab: string) => void;
@@ -63,8 +65,10 @@ export function DSRAddSale({ onNavigate }: DSRAddSaleProps) {
   const [smartcardSearch, setSmartcardSearch] = useState('');
   const [manualSerialNumber, setManualSerialNumber] = useState('');
   const [packageType, setPackageType] = useState<PackageType>('');
+  const [dstvPackage, setDstvPackage] = useState('');
   const [paymentStatus, setPaymentStatus] = useState('paid');
   const [notes, setNotes] = useState('');
+  const [estimatedCommission, setEstimatedCommission] = useState(0);
 
   const [filteredStock, setFilteredStock] = useState<StockOption[]>([]);
 
@@ -86,6 +90,32 @@ export function DSRAddSale({ onNavigate }: DSRAddSaleProps) {
       setFilteredStock(availableStock);
     }
   }, [availableStock, smartcardSearch]);
+
+  // Calculate estimated commission whenever relevant fields change
+  useEffect(() => {
+    if (!stockType) {
+      setEstimatedCommission(0);
+      return;
+    }
+
+    const rates = COMMISSION_RATES[stockType];
+    let commission = rates.upfront;
+
+    // Add activation and package commission only for paid sales
+    if (paymentStatus === 'paid') {
+      commission += rates.activation;
+
+      // Add package commission if package selected
+      if (packageType === 'Package' && dstvPackage) {
+        const selectedPackage = DSTV_PACKAGES.find(p => p.code === dstvPackage);
+        if (selectedPackage) {
+          commission += (selectedPackage.price * rates.packageRate) / 100;
+        }
+      }
+    }
+
+    setEstimatedCommission(commission);
+  }, [stockType, paymentStatus, packageType, dstvPackage]);
 
   async function fetchDSRStock() {
     if (!user) return;
@@ -223,6 +253,18 @@ export function DSRAddSale({ onNavigate }: DSRAddSaleProps) {
       
       console.log('🔍 Final saleType for database:', saleType);
 
+      // Get DSTV package ID if selected
+      let dstvPackageId = null;
+      if (packageType === 'Package' && dstvPackage) {
+        const { data: packageData } = await supabase
+          .from('dstv_packages')
+          .select('id')
+          .eq('package_code', dstvPackage)
+          .single();
+        
+        dstvPackageId = packageData?.id || null;
+      }
+
       // Create sale record
       const saleInsertData: any = {
         dsr_id: dsrId,
@@ -232,6 +274,7 @@ export function DSRAddSale({ onNavigate }: DSRAddSaleProps) {
         smart_card_number: stockType === 'DVS' ? manualSerialNumber.trim() : stock!.smartcard_number,
         sn_number: stockType === 'DVS' ? manualSerialNumber.trim() : stock!.smartcard_number,
         package_option: packageType,
+        dstv_package_id: dstvPackageId,
         payment_status: paymentStatus,
         notes: notes || null,
       };
@@ -529,7 +572,12 @@ export function DSRAddSale({ onNavigate }: DSRAddSaleProps) {
 
               <div>
                 <Label htmlFor="packageType">Package Option *</Label>
-                <Select value={packageType} onValueChange={(value) => setPackageType(value as PackageType)}>
+                <Select value={packageType} onValueChange={(value) => {
+                  setPackageType(value as PackageType);
+                  if (value === 'No Package') {
+                    setDstvPackage('');
+                  }
+                }}>
                   <SelectTrigger id="packageType">
                     <SelectValue placeholder="Select package option" />
                   </SelectTrigger>
@@ -546,6 +594,37 @@ export function DSRAddSale({ onNavigate }: DSRAddSaleProps) {
                   </p>
                 )}
               </div>
+
+              {packageType === 'Package' && (
+                <div>
+                  <Label htmlFor="dstvPackage">DStv Package *</Label>
+                  <Select value={dstvPackage} onValueChange={setDstvPackage}>
+                    <SelectTrigger id="dstvPackage">
+                      <SelectValue placeholder="Select DStv package" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DSTV_PACKAGES.map((pkg) => (
+                        <SelectItem key={pkg.code} value={pkg.code}>
+                          <div className="flex items-center justify-between w-full">
+                            <div className="flex flex-col">
+                              <span className="font-medium">{pkg.name}</span>
+                              <span className="text-xs text-muted-foreground">
+                                {pkg.channels} channels
+                              </span>
+                            </div>
+                            <span className="text-sm text-muted-foreground ml-4">
+                              TZS {pkg.price.toLocaleString()}/mo
+                            </span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Monthly subscription price
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -614,13 +693,69 @@ export function DSRAddSale({ onNavigate }: DSRAddSaleProps) {
                   </div>
                 )}
 
+                {dstvPackage && (
+                  <div className="p-2 bg-blue-50 dark:bg-blue-950/20 rounded border border-blue-200 dark:border-blue-800">
+                    <div className="flex justify-between items-center">
+                      <span className="text-xs text-muted-foreground">DStv Package</span>
+                      <span className="text-xs font-medium">
+                        TZS {DSTV_PACKAGES.find(p => p.code === dstvPackage)?.price.toLocaleString()}/mo
+                      </span>
+                    </div>
+                    <p className="text-sm font-semibold mt-1">
+                      {DSTV_PACKAGES.find(p => p.code === dstvPackage)?.name}
+                    </p>
+                  </div>
+                )}
+
                 <div className="border-t border-border pt-3 mt-3">
-                  <div className="flex justify-between items-center">
+                  <div className="flex justify-between items-center mb-3">
                     <span className="font-semibold text-foreground">Total Amount</span>
                     <span className="font-bold text-2xl text-primary">
                       TZS {calculateTotal().toLocaleString()}
                     </span>
                   </div>
+
+                  {/* Estimated Commission Display */}
+                  {estimatedCommission > 0 && (
+                    <div className="p-3 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800">
+                      <div className="flex items-center gap-2 mb-2">
+                        <TrendingUp className="h-4 w-4 text-green-600 dark:text-green-400" />
+                        <span className="text-sm font-semibold text-green-700 dark:text-green-300">
+                          Your Estimated Commission
+                        </span>
+                      </div>
+                      <div className="text-2xl font-bold text-green-700 dark:text-green-300">
+                        TZS {estimatedCommission.toLocaleString()}
+                      </div>
+                      {stockType && (
+                        <div className="mt-2 text-xs space-y-1 text-green-600 dark:text-green-400">
+                          <div className="flex justify-between">
+                            <span>Upfront:</span>
+                            <span>TZS {COMMISSION_RATES[stockType].upfront.toLocaleString()}</span>
+                          </div>
+                          {paymentStatus === 'paid' && (
+                            <>
+                              <div className="flex justify-between">
+                                <span>Activation:</span>
+                                <span>TZS {COMMISSION_RATES[stockType].activation.toLocaleString()}</span>
+                              </div>
+                              {dstvPackage && (
+                                <div className="flex justify-between">
+                                  <span>Package ({COMMISSION_RATES[stockType].packageRate}%):</span>
+                                  <span>TZS {((DSTV_PACKAGES.find(p => p.code === dstvPackage)?.price || 0) * COMMISSION_RATES[stockType].packageRate / 100).toLocaleString()}</span>
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      )}
+                      {paymentStatus === 'unpaid' && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
+                          Full commission paid on customer payment
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 
