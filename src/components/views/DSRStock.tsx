@@ -39,7 +39,7 @@ interface StockItem {
   stock_id: string;
   type: string;
   batch: string;
-  status: 'assigned-dsr' | 'stock-in-hand' | 'stock-sold' | 'stock-sold-unpaid';
+  status: string;
   date: string;
   assignedBy?: string;
   smartcardNumber?: string;
@@ -50,11 +50,14 @@ interface DSRStockProps {
   onNavigate?: (tab: string) => void;
 }
 
-const statusConfig = {
+const statusConfig: Record<string, { label: string; className: string }> = {
+  'unassigned': { label: 'Unassigned', className: 'bg-gray-500/10 text-gray-500' },
+  'assigned-tl': { label: 'Assigned to TL', className: 'bg-blue-500/10 text-blue-500' },
+  'assigned-team': { label: 'Assigned to Team', className: 'bg-indigo-500/10 text-indigo-500' },
   'assigned-dsr': { label: 'Newly Assigned', className: 'bg-warning/10 text-warning' },
-  'stock-in-hand': { label: 'In Hand', className: 'bg-info/10 text-info' },
-  'stock-sold': { label: 'Sold (Paid)', className: 'bg-success/10 text-success' },
-  'stock-sold-unpaid': { label: 'Sold (Unpaid)', className: 'bg-destructive/10 text-destructive' },
+  'in-hand': { label: 'In Hand', className: 'bg-info/10 text-info' },
+  'sold': { label: 'Sold (Paid)', className: 'bg-success/10 text-success' },
+  'sold-unpaid': { label: 'Sold (Unpaid)', className: 'bg-destructive/10 text-destructive' },
 };
 
 type FilterType = 'all' | 'in-hand' | 'paid' | 'unpaid' | 'new';
@@ -104,17 +107,16 @@ export function DSRStock({ onNavigate }: DSRStockProps = {}) {
         .from('stock')
         .select(`
           id,
-          quantity,
+          stock_id,
+          type,
           status,
           created_at,
-          stock_item_id,
+          date_assigned,
+          batch_id,
           stock_batches (
-            name,
-            batch_number,
-            smartcard_number
+            batch_number
           ),
-          team_leaders (
-            user_id,
+          assigned_by_user:assigned_by(
             profiles (
               full_name
             )
@@ -126,16 +128,16 @@ export function DSRStock({ onNavigate }: DSRStockProps = {}) {
       if (stockError) throw stockError;
 
       // Transform data
-      const transformedStock: StockItem[] = stockData.map((item: any) => ({
+      const transformedStock: StockItem[] = (stockData || []).map((item: any) => ({
         id: item.id,
-        stock_id: item.id,
-        type: item.stock_batches?.name || 'Unknown',
+        stock_id: item.stock_id || item.id,
+        type: item.type || 'Unknown',
         batch: item.stock_batches?.batch_number || 'N/A',
-        smartcardNumber: item.stock_batches?.smartcard_number || 'N/A',
+        smartcardNumber: 'N/A',
         status: item.status,
-        date: new Date(item.created_at).toLocaleDateString(),
-        quantity: item.quantity,
-        assignedBy: item.team_leaders?.profiles?.full_name || 'TL',
+        date: item.date_assigned ? new Date(item.date_assigned).toLocaleDateString() : new Date(item.created_at).toLocaleDateString(),
+        quantity: 1,
+        assignedBy: item.assigned_by_user?.profiles?.full_name || 'Admin',
       }));
 
       // Separate new stock from existing stock
@@ -155,25 +157,25 @@ export function DSRStock({ onNavigate }: DSRStockProps = {}) {
 
   const filteredStock = myStock.filter(item => {
     if (filter === 'all') return true;
-    if (filter === 'in-hand') return item.status === 'stock-in-hand';
-    if (filter === 'paid') return item.status === 'stock-sold';
-    if (filter === 'unpaid') return item.status === 'stock-sold-unpaid';
+    if (filter === 'in-hand') return item.status === 'in-hand';
+    if (filter === 'paid') return item.status === 'sold';
+    if (filter === 'unpaid') return item.status === 'sold-unpaid';
     if (filter === 'new') return item.status === 'assigned-dsr';
     return true;
   });
 
   const handleAcceptStock = async (item: StockItem) => {
     try {
-      // Update stock status to stock-in-hand
+      // Update stock status to in-hand
       const { error } = await supabase
         .from('stock')
-        .update({ status: 'stock-in-hand' })
+        .update({ status: 'in-hand' })
         .eq('id', item.stock_id);
 
       if (error) throw error;
 
       // Move to my stock
-      const updatedItem = { ...item, status: 'stock-in-hand' as const };
+      const updatedItem = { ...item, status: 'in-hand' as const };
       setMyStock([updatedItem, ...myStock]);
       setNewStockAssigned(newStockAssigned.filter(stock => stock.id !== item.id));
       
@@ -235,9 +237,9 @@ export function DSRStock({ onNavigate }: DSRStockProps = {}) {
   };
 
   const getStockCount = () => {
-    const inHand = myStock.filter(s => s.status === 'stock-in-hand').reduce((sum, s) => sum + s.quantity, 0);
-    const soldPaid = myStock.filter(s => s.status === 'stock-sold').reduce((sum, s) => sum + s.quantity, 0);
-    const soldUnpaid = myStock.filter(s => s.status === 'stock-sold-unpaid').reduce((sum, s) => sum + s.quantity, 0);
+    const inHand = myStock.filter(s => s.status === 'in-hand').reduce((sum, s) => sum + s.quantity, 0);
+    const soldPaid = myStock.filter(s => s.status === 'sold').reduce((sum, s) => sum + s.quantity, 0);
+    const soldUnpaid = myStock.filter(s => s.status === 'sold-unpaid').reduce((sum, s) => sum + s.quantity, 0);
     return { inHand, soldPaid, soldUnpaid, total: inHand + soldPaid + soldUnpaid };
   };
 
@@ -399,7 +401,7 @@ export function DSRStock({ onNavigate }: DSRStockProps = {}) {
                   </TableCell>
                   <TableCell className="text-muted-foreground">{item.date}</TableCell>
                   <TableCell className="text-right">
-                    {item.status === 'stock-in-hand' && (
+                    {item.status === 'in-hand' && (
                       <Button 
                         size="sm" 
                         className="bg-success hover:bg-success/90 text-success-foreground"

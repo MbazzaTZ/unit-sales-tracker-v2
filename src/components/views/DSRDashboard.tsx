@@ -89,7 +89,7 @@ export function DSRDashboard({ onNavigate }: DSRDashboardProps) {
         .from('stock')
         .select('quantity')
         .eq('assigned_to_dsr', dsrData.id)
-        .in('status', ['assigned-dsr', 'stock-in-hand']);
+        .in('status', ['assigned-dsr', 'in-hand']);
 
       const stockInHand = stockData?.reduce((sum, item) => sum + item.quantity, 0) || 0;
 

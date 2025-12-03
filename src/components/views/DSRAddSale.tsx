@@ -116,28 +116,26 @@ export function DSRAddSale({ onNavigate }: DSRAddSaleProps) {
         .from('stock')
         .select(`
           id,
-          quantity,
-          stock_item_id,
+          stock_id,
+          type,
+          batch_id,
           stock_batches (
             id,
-            name,
-            smartcard_number,
-            price
+            batch_number
           )
         `)
         .eq('assigned_to_dsr', dsrData.id)
-        .eq('status', 'stock-in-hand')
-        .gt('quantity', 0);
+        .eq('status', 'in-hand');
 
       if (stockError) throw stockError;
 
-      const transformed: StockOption[] = stockData.map((item: any) => ({
+      const transformed: StockOption[] = (stockData || []).map((item: any) => ({
         id: item.id,
-        stock_item_id: item.stock_batches.id,
-        name: item.stock_batches.name || 'Stock Item',
-        smartcard_number: item.stock_batches.smartcard_number || 'N/A',
-        quantity: item.quantity,
-        price: item.stock_batches.price || 0,
+        stock_item_id: item.batch_id,
+        name: item.type || 'Stock Item',
+        smartcard_number: item.stock_id || 'N/A',
+        quantity: 1, // Each stock item is 1 unit
+        price: 0, // Price not stored in stock table
       }));
 
       setAvailableStock(transformed);
@@ -222,14 +220,13 @@ export function DSRAddSale({ onNavigate }: DSRAddSaleProps) {
 
       if (saleError) throw saleError;
 
-      // Update stock status and quantity only for FS/DO
+      // Update stock status only for FS/DO
       if (stockType !== 'DVS' && stock) {
-        const newStatus = paymentStatus === 'paid' ? 'stock-sold' : 'stock-sold-unpaid';
+        const newStatus = paymentStatus === 'paid' ? 'sold' : 'sold-unpaid';
         const { error: stockError } = await supabase
           .from('stock')
           .update({ 
-            status: newStatus,
-            quantity: stock.quantity - 1
+            status: newStatus
           })
           .eq('id', selectedStockId);
 
