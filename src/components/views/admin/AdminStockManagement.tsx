@@ -537,40 +537,48 @@ export function AdminStockManagement() {
           const stockType = row['Type'] || row['type'] || row['Stock Type'] || row['stock_type'] || row['TYPE'] || '';
           const region = row['Region'] || row['region'] || row['Territory'] || row['territory'] || row['REGION'] || row['Region Name'] || row['region_name'] || '';
           
+          // Validate required fields
+          const missingFields = [];
           if (!serialNum || serialNum.toString().trim() === '') {
-            console.warn(`Row ${index + 2}: Missing serial number. Available columns:`, Object.keys(row));
+            missingFields.push('Serial Number');
+          }
+          if (!smartcardNum || smartcardNum.toString().trim() === '') {
+            missingFields.push('Smartcard Number');
+          }
+          if (!stockType || stockType.toString().trim() === '') {
+            missingFields.push('Type');
+          }
+          if (!region || region.toString().trim() === '') {
+            missingFields.push('Region');
+          }
+          
+          if (missingFields.length > 0) {
+            console.warn(`Row ${index + 2}: Missing required fields: ${missingFields.join(', ')}`);
             return null;
           }
           
-          // Auto-detect type if not provided
-          let type = stockType ? stockType.toString().toUpperCase() : '';
-          if (!type || !['FS', 'DO', 'DVS'].includes(type)) {
-            // Try to guess from serial number
-            const sn = serialNum.toString().toUpperCase();
-            if (sn.includes('FS')) type = 'FS';
-            else if (sn.includes('DO')) type = 'DO';
-            else if (sn.includes('DVS')) type = 'DVS';
-            else type = 'FS'; // Default
+          // Validate and normalize Type field (must be FS, DO, or DVS)
+          let type = stockType.toString().toUpperCase().trim();
+          if (!['FS', 'DO', 'DVS'].includes(type)) {
+            console.warn(`Row ${index + 2}: Invalid type "${type}". Must be FS, DO, or DVS`);
+            return null;
           }
-          
-          // Properly handle smartcard number - convert empty strings to empty for display
-          const trimmedSmartcard = smartcardNum ? smartcardNum.toString().trim() : '';
           
           return {
             stock_id: stockId ? stockId.toString().trim() : '',
             batch_number: batchNum ? batchNum.toString().trim() : '',
             serial_number: serialNum.toString().trim(),
-            smartcard_number: trimmedSmartcard,
+            smartcard_number: smartcardNum.toString().trim(),
             type: type,
-            region: region ? region.toString().trim() : '',
-            territory: region ? region.toString().trim() : ''
+            region: region.toString().trim(),
+            territory: region.toString().trim()
           };
         }).filter(item => item !== null) as typeof csvData;
         
         if (parsedData.length === 0) {
           toast({ 
             title: 'No valid data found', 
-            description: 'Excel must have: Serial Number (required), Smartcard Number, Type, Batch Number, Region (all optional)',
+            description: 'Required: Serial Number, Smartcard Number, Type (FS/DO/DVS), Region. Optional: Stock ID, Batch Number',
             variant: 'destructive' 
           });
           setIsProcessingCsv(false);
@@ -868,7 +876,7 @@ export function AdminStockManagement() {
                       <div className="space-y-2">
                         <FileSpreadsheet className="h-8 w-8 mx-auto text-muted-foreground" />
                         <p className="text-muted-foreground">Click to upload Excel/CSV</p>
-                        <p className="text-xs text-muted-foreground">Required: Serial Number • Optional: Smartcard Number, Type, Region</p>
+                        <p className="text-xs text-muted-foreground">Required: Serial Number, Smartcard Number, Type (FS/DO/DVS), Region</p>
                       </div>
                     )}
                     <input

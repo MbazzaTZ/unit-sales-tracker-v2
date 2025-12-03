@@ -40,6 +40,22 @@ export default function AdminTSMManagement() {
     },
   });
 
+  // ------------------ FETCH TERRITORIES ------------------
+  const { data: allTerritories = [] } = useQuery({
+    queryKey: ["territories"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("territories")
+        .select(`
+          *,
+          regions!inner(zone_id, name)
+        `)
+        .order("name");
+      if (error) throw error;
+      return data;
+    },
+  });
+
   // Fetch all TSMs to determine occupied territories
   const { data: allTSMs = [] } = useQuery({
     queryKey: ["all-tsms-territories"],
@@ -56,22 +72,30 @@ export default function AdminTSMManagement() {
   // Territory list based on selected zone - show only vacant territories
   const territories = selectedZone
     ? (() => {
-        const zone = zones.find((z: any) => z.id === selectedZone);
-        if (!zone || !zone.territories) return [];
+        // Get all territories in the selected zone
+        const zoneTerritories = allTerritories.filter(
+          (t: any) => t.regions?.zone_id === selectedZone
+        );
+        
+        if (zoneTerritories.length === 0) return [];
         
         // Get all territories occupied by TSMs in this zone
         const occupiedTerritories = allTSMs
           .filter((tsm: any) => tsm.zone_id === selectedZone)
           .flatMap((tsm: any) => tsm.territories || []);
         
+        console.log('Zone territories:', zoneTerritories);
+        console.log('Occupied territories:', occupiedTerritories);
+        
         // Return only vacant territories
-        return zone.territories
+        return zoneTerritories
+          .filter((t: any) => !occupiedTerritories.includes(t.id))
           .map((t: any) => ({
-            id: `${zone.id}-${t.territory}`,
-            name: t.territory,
-            isOccupied: occupiedTerritories.includes(`${zone.id}-${t.territory}`)
-          }))
-          .filter((t: any) => !t.isOccupied);
+            id: t.id,
+            name: t.name,
+            code: t.code,
+            regionName: t.regions?.name || ''
+          }));
       })()
     : [];
 
@@ -338,7 +362,7 @@ export default function AdminTSMManagement() {
                             active ? "bg-primary text-white" : "bg-secondary text-foreground"
                           )}
                         >
-                          {t.name}
+                          {t.name} {t.regionName && `(${t.regionName})`}
                         </Badge>
                       );
                     })}
@@ -385,9 +409,18 @@ export default function AdminTSMManagement() {
                   <TableCell>{m.profiles?.phone_number}</TableCell>
                   <TableCell>{m.zone?.name || "-"}</TableCell>
                   <TableCell>
-                    {m.territories?.length
-                      ? m.territories.map((t: string) => <Badge key={t} className="mr-1">{t.split("-")[1] || t}</Badge>)
-                      : "-"}
+                    {m.territories?.length > 0 ? (
+                      m.territories.map((territoryId: string) => {
+                        const territory = allTerritories.find((t: any) => t.id === territoryId);
+                        return (
+                          <Badge key={territoryId} className="mr-1">
+                            {territory?.name || territoryId}
+                          </Badge>
+                        );
+                      })
+                    ) : (
+                      "-"
+                    )}
                   </TableCell>
                   <TableCell>
                     <Button
