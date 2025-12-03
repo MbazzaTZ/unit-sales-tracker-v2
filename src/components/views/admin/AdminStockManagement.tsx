@@ -97,24 +97,66 @@ export function AdminStockManagement() {
   const { data: stock = [], isLoading } = useQuery({
     queryKey: ['stock'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      // Fetch stock with batch info only
+      const { data: stockData, error: stockError } = await supabase
         .from('stock')
-        .select(`
-          *,
-          batch:stock_batches!stock_batch_id_fkey (
-            batch_number
-          ),
-          assigned_tl:team_leaders!stock_assigned_to_tl_fkey (
-            id,
-            profiles!team_leaders_user_id_fkey (
-              full_name
-            )
-          )
-        `)
+        .select('*, batch:stock_batches(batch_number)')
         .order('created_at', { ascending: false });
       
-      if (error) throw error;
-      return data;
+      if (stockError) throw stockError;
+      if (!stockData || stockData.length === 0) return [];
+      
+      // Get unique TL IDs
+      const tlIds = stockData
+        .map(s => s.assigned_to_tl)
+        .filter(Boolean)
+        .filter((v, i, a) => a.indexOf(v) === i);
+      
+      if (tlIds.length === 0) return stockData;
+      
+      // Fetch team leaders separately
+      const { data: tls, error: tlError } = await supabase
+        .from('team_leaders')
+        .select('id, user_id')
+        .in('id', tlIds);
+      
+      if (tlError) {
+        console.error('Error fetching team leaders:', tlError);
+        return stockData;
+      }
+      
+      // Get user IDs for profiles
+      const userIds = tls?.map(tl => tl.user_id).filter(Boolean) || [];
+      
+      let profiles: any[] = [];
+      if (userIds.length > 0) {
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('id, full_name')
+          .in('id', userIds);
+        
+        if (!profileError && profileData) {
+          profiles = profileData;
+        }
+      }
+      
+      // Merge data
+      return stockData.map(stock => {
+        if (!stock.assigned_to_tl) return stock;
+        
+        const tl = tls?.find(t => t.id === stock.assigned_to_tl);
+        if (!tl) return stock;
+        
+        const profile = profiles.find(p => p.id === tl.user_id);
+        
+        return {
+          ...stock,
+          assigned_tl: {
+            id: tl.id,
+            profiles: profile || null
+          }
+        };
+      });
     }
   });
 
