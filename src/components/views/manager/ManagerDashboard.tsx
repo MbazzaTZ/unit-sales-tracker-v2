@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,6 +20,7 @@ interface DashboardMetrics {
 
 export default function ManagerDashboard() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState<DashboardMetrics>({
     totalSales: 0,
@@ -376,7 +378,10 @@ export default function ManagerDashboard() {
 
       {/* Quick Actions */}
       <div className="grid gap-4 md:grid-cols-3">
-        <Card className="cursor-pointer hover:bg-accent transition-colors">
+        <Card 
+          className="cursor-pointer hover:bg-accent transition-colors"
+          onClick={() => navigate('/manager/stock')}
+        >
           <CardContent className="pt-6">
             <div className="text-center">
               <Package className="w-12 h-12 mx-auto mb-2 text-primary" />
@@ -386,7 +391,10 @@ export default function ManagerDashboard() {
           </CardContent>
         </Card>
 
-        <Card className="cursor-pointer hover:bg-accent transition-colors">
+        <Card 
+          className="cursor-pointer hover:bg-accent transition-colors"
+          onClick={() => navigate('/manager/sales-team')}
+        >
           <CardContent className="pt-6">
             <div className="text-center">
               <Users className="w-12 h-12 mx-auto mb-2 text-primary" />
@@ -396,7 +404,10 @@ export default function ManagerDashboard() {
           </CardContent>
         </Card>
 
-        <Card className="cursor-pointer hover:bg-accent transition-colors">
+        <Card 
+          className="cursor-pointer hover:bg-accent transition-colors"
+          onClick={() => navigate('/manager/commissions')}
+        >
           <CardContent className="pt-6">
             <div className="text-center">
               <DollarSign className="w-12 h-12 mx-auto mb-2 text-primary" />
