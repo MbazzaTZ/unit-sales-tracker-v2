@@ -147,18 +147,63 @@ export function TLStockManagement() {
         .from('stock')
         .select(`
           *,
-          batch:stock_batches(batch_number),
-          dsr:assigned_to_dsr(dsr_number, profiles:user_id(full_name)),
-          team:assigned_to_team(name)
+          batch:stock_batches(batch_number)
         `)
         .eq('assigned_to_tl', tlData.id)
         .order('created_at', { ascending: false });
 
       if (error) {
         console.error('Error fetching stock:', error);
+        toast({
+          variant: 'destructive',
+          title: 'Error',
+          description: 'Failed to fetch stock: ' + error.message,
+        });
       }
 
-      console.log('Stock fetched:', stockData);
+      console.log('Stock fetched for TL:', tlData.id, stockData);
+      
+      // Manually fetch DSR and team info if needed
+      if (stockData && stockData.length > 0) {
+        // Get DSR info for assigned stock
+        const dsrIds = stockData
+          .filter(s => s.assigned_to_dsr)
+          .map(s => s.assigned_to_dsr);
+        
+        if (dsrIds.length > 0) {
+          const { data: dsrInfo } = await supabase
+            .from('dsrs')
+            .select('id, dsr_number, user_id, profiles:user_id(full_name)')
+            .in('id', dsrIds);
+          
+          // Attach DSR info to stock items
+          stockData.forEach(stock => {
+            if (stock.assigned_to_dsr) {
+              stock.dsr = dsrInfo?.find(d => d.id === stock.assigned_to_dsr);
+            }
+          });
+        }
+        
+        // Get team info for assigned stock
+        const teamIds = stockData
+          .filter(s => s.assigned_to_team)
+          .map(s => s.assigned_to_team);
+        
+        if (teamIds.length > 0) {
+          const { data: teamInfo } = await supabase
+            .from('teams')
+            .select('id, name')
+            .in('id', teamIds);
+          
+          // Attach team info to stock items
+          stockData.forEach(stock => {
+            if (stock.assigned_to_team) {
+              stock.team = teamInfo?.find(t => t.id === stock.assigned_to_team);
+            }
+          });
+        }
+      }
+
       setStocks(stockData || []);
 
     } catch (error) {
