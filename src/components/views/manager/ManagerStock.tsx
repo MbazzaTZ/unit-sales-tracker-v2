@@ -3,7 +3,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Package } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Loader2, Package, AlertCircle } from 'lucide-react';
 
 interface StockItem {
   id: string;
@@ -18,14 +20,25 @@ interface StockItem {
   batch_number?: string;
 }
 
+interface UnpaidStockByTL {
+  tl_id: string;
+  tl_name: string;
+  unpaid_count: number;
+  unpaid_stock: StockItem[];
+}
+
 export default function ManagerStock() {
   const [loading, setLoading] = useState(true);
   const [stock, setStock] = useState<StockItem[]>([]);
+  const [unpaidByTL, setUnpaidByTL] = useState<UnpaidStockByTL[]>([]);
+  const [selectedTL, setSelectedTL] = useState<UnpaidStockByTL | null>(null);
+  const [showUnpaidDialog, setShowUnpaidDialog] = useState(false);
   const [stats, setStats] = useState({
     total: 0,
     inHand: 0,
     sold: 0,
-    assigned: 0
+    assigned: 0,
+    unpaid: 0
   });
 
   useEffect(() => {
@@ -144,8 +157,29 @@ export default function ManagerStock() {
       const assigned = formattedStock.filter(item => 
         item.status?.includes('assigned') || item.status === 'assigned-dsr'
       ).length;
+      const unpaid = formattedStock.filter(item => item.status === 'sold-unpaid').length;
 
-      setStats({ total, inHand, sold, assigned });
+      setStats({ total, inHand, sold, assigned, unpaid });
+
+      // Group unpaid stock by TL
+      const unpaidStock = formattedStock.filter(item => item.status === 'sold-unpaid');
+      const groupedByTL: Record<string, UnpaidStockByTL> = {};
+
+      unpaidStock.forEach(item => {
+        const tlKey = item.tl_name || 'Unassigned';
+        if (!groupedByTL[tlKey]) {
+          groupedByTL[tlKey] = {
+            tl_id: item.tl_name || 'N/A',
+            tl_name: tlKey,
+            unpaid_count: 0,
+            unpaid_stock: []
+          };
+        }
+        groupedByTL[tlKey].unpaid_count++;
+        groupedByTL[tlKey].unpaid_stock.push(item);
+      });
+
+      setUnpaidByTL(Object.values(groupedByTL));
     } catch (error) {
       console.error('Error fetching stock:', error);
     } finally {
@@ -227,7 +261,80 @@ export default function ManagerStock() {
             <p className="text-xs text-muted-foreground">Completed transactions</p>
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Unpaid Stock</CardTitle>
+            <AlertCircle className="h-4 w-4 text-red-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-red-600">{stats.unpaid}</div>
+            <p className="text-xs text-muted-foreground">Sold but not paid</p>
+          </CardContent>
+        </Card>
       </div>
+
+      {/* Unpaid Stock by TL/TSM */}
+      {unpaidByTL.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-red-500" />
+              Unpaid Stock by Team Leader / TSM
+            </CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Click on a TL/TSM to view their unpaid stock details
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Team Leader / TSM</TableHead>
+                    <TableHead className="text-right">Unpaid Items</TableHead>
+                    <TableHead className="text-right">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {unpaidByTL.map((tl) => (
+                    <TableRow key={tl.tl_name} className="hover:bg-muted/50">
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <div className="h-8 w-8 rounded-full bg-red-100 flex items-center justify-center">
+                            <AlertCircle className="h-4 w-4 text-red-600" />
+                          </div>
+                          <div>
+                            <div className="font-medium">{tl.tl_name}</div>
+                            <div className="text-xs text-muted-foreground">Team Leader</div>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Badge variant="destructive" className="font-bold">
+                          {tl.unpaid_count} items
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setSelectedTL(tl);
+                            setShowUnpaidDialog(true);
+                          }}
+                        >
+                          View Details
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Stock Table */}
       <Card>
@@ -302,6 +409,69 @@ export default function ManagerStock() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Unpaid Stock Details Dialog */}
+      <Dialog open={showUnpaidDialog} onOpenChange={setShowUnpaidDialog}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-red-500" />
+              Unpaid Stock - {selectedTL?.tl_name}
+            </DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              {selectedTL?.unpaid_count} unpaid items under this Team Leader
+            </p>
+          </DialogHeader>
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Smartcard No.</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Batch</TableHead>
+                  <TableHead>Assigned DSR</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {selectedTL?.unpaid_stock.map((item) => (
+                  <TableRow key={item.id}>
+                    <TableCell className="font-mono">{item.smartcard_number}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="capitalize">
+                        {item.stock_type}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className="font-mono">
+                        {item.batch_number}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex flex-col">
+                        <span className="font-medium">{item.dsr_name}</span>
+                        {item.assigned_to_dsr && (
+                          <span className="text-xs text-muted-foreground">
+                            DSR ID: {item.assigned_to_dsr.substring(0, 8)}...
+                          </span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="destructive">Sold - Unpaid</Badge>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          <div className="flex justify-end mt-4">
+            <Button variant="outline" onClick={() => setShowUnpaidDialog(false)}>
+              Close
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
