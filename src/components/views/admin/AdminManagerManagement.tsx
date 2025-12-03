@@ -82,24 +82,33 @@ export function AdminManagerManagement() {
         throw error;
       }
 
+      console.log("Raw managers data:", data);
+
       // Fetch profiles separately
       if (data && data.length > 0) {
         const userIds = data.map(m => m.user_id);
+        console.log("Fetching profiles for user IDs:", userIds);
+        
         const { data: profiles, error: profileError } = await supabase
           .from("profiles")
           .select("id, full_name, email, phone_number")
           .in("id", userIds);
+
+        console.log("Profiles data:", profiles);
 
         if (profileError) {
           console.error("Error fetching profiles:", profileError);
         }
 
         // Map profiles to managers
-        return data.map(manager => ({
+        const mappedManagers = data.map(manager => ({
           ...manager,
           zone: manager.zones,
           profiles: profiles?.find(p => p.id === manager.user_id)
         }));
+        
+        console.log("Mapped managers:", mappedManagers);
+        return mappedManagers;
       }
 
       return data;
@@ -123,8 +132,8 @@ export function AdminManagerManagement() {
 
       const userId = authData.user.id;
 
-      // 2. Wait for trigger to create profile and role
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // 2. Wait for trigger to create profile and role (increased wait time)
+      await new Promise(resolve => setTimeout(resolve, 2000));
 
       // 3. Update profile with phone number
       await supabase.from("profiles").update({
@@ -136,10 +145,13 @@ export function AdminManagerManagement() {
         user_id: userId,
         manager_type: managerType,
         zone_id: zoneId,
-        territory_ids: territoryIds || [],
+        territories: territoryIds || [], // Column name is 'territories' not 'territory_ids'
       });
 
-      if (mgrErr) throw mgrErr;
+      if (mgrErr) {
+        console.error("Error inserting manager:", mgrErr);
+        throw mgrErr;
+      }
     },
     onSuccess: () => {
       toast.success("Manager created successfully");
@@ -352,8 +364,8 @@ export function AdminManagerManagement() {
                   </TableCell>
                   <TableCell>{m.zone?.name || "-"}</TableCell>
                   <TableCell>
-                    {m.territory_ids?.length
-                      ? m.territory_ids.map((t: string) => <Badge key={t}>{t.split("-")[1]}</Badge>)
+                    {m.territories?.length
+                      ? m.territories.map((t: string) => <Badge key={t} className="mr-1">{t.split("-")[1] || t}</Badge>)
                       : "-"}
                   </TableCell>
                   <TableCell className="text-right">
