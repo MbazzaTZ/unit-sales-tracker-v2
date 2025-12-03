@@ -28,6 +28,9 @@ import { cn } from "@/lib/utils";
 
 export function AdminManagerManagement() {
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [isEditTargetOpen, setIsEditTargetOpen] = useState(false);
+  const [selectedRSM, setSelectedRSM] = useState<any>(null);
+  const [targetAmount, setTargetAmount] = useState("");
 
   // Form
   const [managerType, setManagerType] = useState<"RSM" | "TSM">("RSM");
@@ -162,6 +165,29 @@ export function AdminManagerManagement() {
     onError: (e: any) => toast.error(e.message),
   });
 
+  // ------------------ UPDATE TARGET ------------------
+  const updateTarget = useMutation({
+    mutationFn: async ({ rsmId, target }: { rsmId: string; target: number }) => {
+      const { error } = await supabase
+        .from("managers")
+        .update({
+          monthly_target: target,
+          target_updated_at: new Date().toISOString(),
+        })
+        .eq("id", rsmId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Target updated successfully");
+      queryClient.invalidateQueries({ queryKey: ["rsms"] });
+      setIsEditTargetOpen(false);
+      setSelectedRSM(null);
+      setTargetAmount("");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
   // ------------------ DELETE RSM ------------------
   const deleteRSM = useMutation({
     mutationFn: async (rsmId: string) => {
@@ -284,15 +310,17 @@ export function AdminManagerManagement() {
               <TableHead>Email</TableHead>
               <TableHead>Phone</TableHead>
               <TableHead>Zone</TableHead>
-              <TableHead></TableHead>
+              <TableHead>Monthly Target</TableHead>
+              <TableHead>Actual Sales</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
 
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={5} className="text-center py-6">Loading...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} className="text-center py-6">Loading...</TableCell></TableRow>
             ) : rsms.length === 0 ? (
-              <TableRow><TableCell colSpan={5} className="text-center py-6">No RSMs yet</TableCell></TableRow>
+              <TableRow><TableCell colSpan={7} className="text-center py-6">No RSMs yet</TableCell></TableRow>
             ) : (
               rsms.map((m: any) => (
                 <TableRow key={m.id}>
@@ -300,9 +328,26 @@ export function AdminManagerManagement() {
                   <TableCell>{m.profiles?.email}</TableCell>
                   <TableCell>{m.profiles?.phone_number}</TableCell>
                   <TableCell>{m.zone?.name || "-"}</TableCell>
+                  <TableCell>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setSelectedRSM(m);
+                        setTargetAmount(m.monthly_target?.toString() || "");
+                        setIsEditTargetOpen(true);
+                      }}
+                    >
+                      {m.monthly_target ? `$${Number(m.monthly_target).toLocaleString()}` : "Set Target"}
+                    </Button>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline">{m.actual_sales ? `$${Number(m.actual_sales).toLocaleString()}` : "$0"}</Badge>
+                  </TableCell>
                   <TableCell className="text-right">
                     <Button
                       variant="ghost"
+                      size="sm"
                       onClick={() => deleteRSM.mutate(m.id)}
                     >
                       <Trash2 className="h-4 w-4 text-destructive" />
@@ -314,6 +359,47 @@ export function AdminManagerManagement() {
           </TableBody>
         </Table>
       </div>
+
+      {/* EDIT TARGET DIALOG */}
+      <Dialog open={isEditTargetOpen} onOpenChange={setIsEditTargetOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Set Monthly Target</DialogTitle>
+            <DialogDescription>
+              Set monthly sales target for {selectedRSM?.profiles?.full_name}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 pt-4">
+            <div>
+              <Label>Monthly Target Amount ($)</Label>
+              <Input
+                type="number"
+                value={targetAmount}
+                onChange={(e) => setTargetAmount(e.target.value)}
+                placeholder="Enter target amount"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              onClick={() => {
+                if (!targetAmount || isNaN(Number(targetAmount))) {
+                  return toast.error("Please enter a valid amount");
+                }
+                updateTarget.mutate({
+                  rsmId: selectedRSM.id,
+                  target: Number(targetAmount),
+                });
+              }}
+              disabled={updateTarget.isPending}
+            >
+              {updateTarget.isPending ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : "Save Target"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

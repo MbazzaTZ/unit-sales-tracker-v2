@@ -365,7 +365,8 @@ export const AdminDEManagement = () => {
               <TableHead>Phone</TableHead>
               <TableHead>Zone</TableHead>
               <TableHead>Territory</TableHead>
-              <TableHead>Target</TableHead>
+              <TableHead>Monthly Target</TableHead>
+              <TableHead>Actual Sales</TableHead>
               <TableHead>Created</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
@@ -374,13 +375,13 @@ export const AdminDEManagement = () => {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-8">
+                <TableCell colSpan={8} className="text-center py-8">
                   Loading...
                 </TableCell>
               </TableRow>
             ) : des?.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-8">
+                <TableCell colSpan={8} className="text-center py-8">
                   No Distribution Executives found.
                 </TableCell>
               </TableRow>
@@ -397,7 +398,12 @@ export const AdminDEManagement = () => {
                     <TableCell>
                       <Badge variant="outline">{territory?.name || "-"}</Badge>
                     </TableCell>
-                    <TableCell>TZS {Number(de.target || 0).toLocaleString()}</TableCell>
+                    <TableCell>
+                      {de.monthly_target ? `$${Number(de.monthly_target).toLocaleString()}` : "-"}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{de.actual_sales ? `$${Number(de.actual_sales).toLocaleString()}` : "$0"}</Badge>
+                    </TableCell>
                     <TableCell>{new Date(de.created_at).toLocaleDateString()}</TableCell>
 
                     <TableCell className="text-right space-x-2">

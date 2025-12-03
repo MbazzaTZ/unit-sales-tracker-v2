@@ -17,6 +17,9 @@ export default function AdminTSMManagement() {
 
   // Form state
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [isEditTargetOpen, setIsEditTargetOpen] = useState(false);
+  const [selectedTSM, setSelectedTSM] = useState<any>(null);
+  const [targetAmount, setTargetAmount] = useState("");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -37,15 +40,38 @@ export default function AdminTSMManagement() {
     },
   });
 
-  // Territory list based on selected zone
+  // Fetch all TSMs to determine occupied territories
+  const { data: allTSMs = [] } = useQuery({
+    queryKey: ["all-tsms-territories"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("managers")
+        .select("territories, zone_id")
+        .eq("manager_type", "TSM");
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Territory list based on selected zone - show only vacant territories
   const territories = selectedZone
     ? (() => {
         const zone = zones.find((z: any) => z.id === selectedZone);
         if (!zone || !zone.territories) return [];
-        return zone.territories.map((t: any) => ({
-          id: `${zone.id}-${t.territory}`,
-          name: t.territory,
-        }));
+        
+        // Get all territories occupied by TSMs in this zone
+        const occupiedTerritories = allTSMs
+          .filter((tsm: any) => tsm.zone_id === selectedZone)
+          .flatMap((tsm: any) => tsm.territories || []);
+        
+        // Return only vacant territories
+        return zone.territories
+          .map((t: any) => ({
+            id: `${zone.id}-${t.territory}`,
+            name: t.territory,
+            isOccupied: occupiedTerritories.includes(`${zone.id}-${t.territory}`)
+          }))
+          .filter((t: any) => !t.isOccupied);
       })()
     : [];
 
@@ -148,6 +174,29 @@ export default function AdminTSMManagement() {
     onError: (e: any) => toast.error(e.message),
   });
 
+  // ------------------ UPDATE TARGET ------------------
+  const updateTarget = useMutation({
+    mutationFn: async ({ tsmId, target }: { tsmId: string; target: number }) => {
+      const { error } = await supabase
+        .from("managers")
+        .update({
+          monthly_target: target,
+          target_updated_at: new Date().toISOString(),
+        })
+        .eq("id", tsmId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Target updated successfully");
+      queryClient.invalidateQueries({ queryKey: ["tsms"] });
+      setIsEditTargetOpen(false);
+      setSelectedTSM(null);
+      setTargetAmount("");
+    },
+    onError: (e: any) => toast.error(e.message),
+  });
+
   // ------------------ DELETE TSM ------------------
   const deleteTSM = useMutation({
     mutationFn: async (tsmId: string) => {
@@ -156,6 +205,7 @@ export default function AdminTSMManagement() {
     onSuccess: () => {
       toast.success("TSM deleted");
       queryClient.invalidateQueries({ queryKey: ["tsms"] });
+      queryClient.invalidateQueries({ queryKey: ["all-tsms-territories"] });
     },
     onError: (e) => toast.error(e.message),
   });
@@ -264,33 +314,36 @@ export default function AdminTSMManagement() {
 
               {/* TERRITORY MULTI-SELECT */}
               <div>
-                <Label>Assign Territories * (1-2 required)</Label>
-
-                <div className="flex flex-wrap gap-2 mt-2">
-                  {territories.map((t: any) => {
-                    const active = selectedTerritories.includes(t.id);
-                    return (
-                      <Badge
-                        key={t.id}
-                        onClick={() => {
-                          if (active) {
-                            setSelectedTerritories((prev) => prev.filter((x) => x !== t.id));
-                          } else if (selectedTerritories.length < 2) {
-                            setSelectedTerritories((prev) => [...prev, t.id]);
-                          } else {
-                            toast.error("Max 2 territories allowed");
-                          }
-                        }}
-                        className={cn(
-                          "cursor-pointer px-3 py-1",
-                          active ? "bg-primary text-white" : "bg-secondary text-foreground"
-                        )}
-                      >
-                        {t.name}
-                      </Badge>
-                    );
-                  })}
-                </div>
+                <Label>Assign Vacant Territories * (1-2 required)</Label>
+                {territories.length === 0 && selectedZone ? (
+                  <p className="text-sm text-muted-foreground mt-2">No vacant territories available in this zone</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {territories.map((t: any) => {
+                      const active = selectedTerritories.includes(t.id);
+                      return (
+                        <Badge
+                          key={t.id}
+                          onClick={() => {
+                            if (active) {
+                              setSelectedTerritories((prev) => prev.filter((x) => x !== t.id));
+                            } else if (selectedTerritories.length < 2) {
+                              setSelectedTerritories((prev) => [...prev, t.id]);
+                            } else {
+                              toast.error("Max 2 territories allowed");
+                            }
+                          }}
+                          className={cn(
+                            "cursor-pointer px-3 py-1",
+                            active ? "bg-primary text-white" : "bg-secondary text-foreground"
+                          )}
+                        >
+                          {t.name}
+                        </Badge>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               <DialogFooter>
@@ -313,15 +366,17 @@ export default function AdminTSMManagement() {
               <TableHead>Phone</TableHead>
               <TableHead>Zone</TableHead>
               <TableHead>Territories</TableHead>
-              <TableHead></TableHead>
+              <TableHead>Monthly Target</TableHead>
+              <TableHead>Actual Sales</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
 
           <TableBody>
             {isLoading ? (
-              <TableRow><TableCell colSpan={6} className="text-center py-6">Loading...</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="text-center py-6">Loading...</TableCell></TableRow>
             ) : tsms.length === 0 ? (
-              <TableRow><TableCell colSpan={6} className="text-center py-6">No TSMs yet</TableCell></TableRow>
+              <TableRow><TableCell colSpan={8} className="text-center py-6">No TSMs yet</TableCell></TableRow>
             ) : (
               tsms.map((m: any) => (
                 <TableRow key={m.id}>
@@ -334,9 +389,26 @@ export default function AdminTSMManagement() {
                       ? m.territories.map((t: string) => <Badge key={t} className="mr-1">{t.split("-")[1] || t}</Badge>)
                       : "-"}
                   </TableCell>
+                  <TableCell>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setSelectedTSM(m);
+                        setTargetAmount(m.monthly_target?.toString() || "");
+                        setIsEditTargetOpen(true);
+                      }}
+                    >
+                      {m.monthly_target ? `$${Number(m.monthly_target).toLocaleString()}` : "Set Target"}
+                    </Button>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline">{m.actual_sales ? `$${Number(m.actual_sales).toLocaleString()}` : "$0"}</Badge>
+                  </TableCell>
                   <TableCell className="text-right">
                     <Button
                       variant="ghost"
+                      size="sm"
                       onClick={() => deleteTSM.mutate(m.id)}
                     >
                       <Trash2 className="h-4 w-4 text-destructive" />
@@ -348,6 +420,47 @@ export default function AdminTSMManagement() {
           </TableBody>
         </Table>
       </div>
+
+      {/* EDIT TARGET DIALOG */}
+      <Dialog open={isEditTargetOpen} onOpenChange={setIsEditTargetOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Set Monthly Target</DialogTitle>
+            <DialogDescription>
+              Set monthly sales target for {selectedTSM?.profiles?.full_name}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 pt-4">
+            <div>
+              <Label>Monthly Target Amount ($)</Label>
+              <Input
+                type="number"
+                value={targetAmount}
+                onChange={(e) => setTargetAmount(e.target.value)}
+                placeholder="Enter target amount"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              onClick={() => {
+                if (!targetAmount || isNaN(Number(targetAmount))) {
+                  return toast.error("Please enter a valid amount");
+                }
+                updateTarget.mutate({
+                  tsmId: selectedTSM.id,
+                  target: Number(targetAmount),
+                });
+              }}
+              disabled={updateTarget.isPending}
+            >
+              {updateTarget.isPending ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : "Save Target"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

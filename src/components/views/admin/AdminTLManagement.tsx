@@ -390,7 +390,8 @@ export function AdminTLManagement() {
                 <TableHead className="text-muted-foreground">Email</TableHead>
                 <TableHead className="text-muted-foreground">Region</TableHead>
                 <TableHead className="text-muted-foreground">Territory</TableHead>
-                <TableHead className="text-muted-foreground">Target</TableHead>
+                <TableHead className="text-muted-foreground">Monthly Target</TableHead>
+                <TableHead className="text-muted-foreground">Actual Sales</TableHead>
                 <TableHead className="text-muted-foreground">Created</TableHead>
                 <TableHead className="text-muted-foreground text-right">Actions</TableHead>
               </TableRow>
@@ -414,7 +415,12 @@ export function AdminTLManagement() {
                       <span className="text-muted-foreground">-</span>
                     )}
                   </TableCell>
-                  <TableCell className="text-foreground">{tl.monthly_target}</TableCell>
+                  <TableCell className="text-foreground">
+                    {tl.monthly_target ? `$${Number(tl.monthly_target).toLocaleString()}` : "-"}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline">{tl.actual_sales ? `$${Number(tl.actual_sales).toLocaleString()}` : "$0"}</Badge>
+                  </TableCell>
                   <TableCell className="text-muted-foreground">
                     {new Date(tl.created_at).toLocaleDateString()}
                   </TableCell>
