@@ -46,9 +46,34 @@ INSERT INTO public.package_commission_rates (package_name, commission_amount) VA
   ('COMPACT_PLUS', 35000),
   ('COMPACT', 17000),
   ('SHANGWE', 6000),
+  ('FAMILY', 6000),
   ('ACCESS', 2750),
   ('BOMBA', 2750)
 ON CONFLICT (package_name) DO UPDATE SET commission_amount = EXCLUDED.commission_amount;
+
+-- Create DSTV packages table with actual prices
+CREATE TABLE IF NOT EXISTS public.dstv_packages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  package_code TEXT NOT NULL UNIQUE,
+  package_name TEXT NOT NULL,
+  monthly_price NUMERIC(10, 2) NOT NULL,
+  description TEXT,
+  is_active BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Insert DSTV Tanzania package prices
+INSERT INTO public.dstv_packages (package_code, package_name, monthly_price, description) VALUES
+  ('ACCESS', 'Access', 27500, 'Basic entertainment package'),
+  ('BOMBA', 'Bomba', 27500, 'Basic entertainment package'),
+  ('SHANGWE', 'Shangwe', 40000, 'Family entertainment package'),
+  ('FAMILY', 'Family', 40000, 'Family entertainment package'),
+  ('COMPACT', 'Compact', 68000, 'Popular entertainment package'),
+  ('COMPACT_PLUS', 'Compact Plus', 118000, 'Premium entertainment package'),
+  ('PREMIUM', 'Premium', 189000, 'All channels premium package')
+ON CONFLICT (package_code) DO UPDATE SET
+  monthly_price = EXCLUDED.monthly_price,
+  description = EXCLUDED.description;
 
 -- Create DSR bonus tiers table
 CREATE TABLE IF NOT EXISTS public.dsr_bonus_tiers (
@@ -77,6 +102,7 @@ ON CONFLICT DO NOTHING;
 -- Add commission columns to sales table
 ALTER TABLE public.sales
 ADD COLUMN IF NOT EXISTS dstv_package_id UUID,
+ADD COLUMN IF NOT EXISTS sale_amount NUMERIC(10, 2) DEFAULT 0,
 ADD COLUMN IF NOT EXISTS upfront_commission NUMERIC(10, 2) DEFAULT 0,
 ADD COLUMN IF NOT EXISTS activation_commission NUMERIC(10, 2) DEFAULT 0,
 ADD COLUMN IF NOT EXISTS package_commission NUMERIC(10, 2) DEFAULT 0,
@@ -158,9 +184,35 @@ RETURNS TRIGGER AS $$
 DECLARE
   v_commission RECORD;
   v_package_name TEXT;
+  v_package_price NUMERIC := 0;
+  v_device_price NUMERIC := 0;
 BEGIN
   -- Get package name from package_option field
   v_package_name := NEW.package_option;
+  
+  -- Get package price if package selected
+  IF v_package_name IS NOT NULL AND v_package_name != 'no-package' THEN
+    SELECT monthly_price INTO v_package_price
+    FROM public.dstv_packages
+    WHERE UPPER(package_code) = UPPER(v_package_name)
+       OR UPPER(package_name) = UPPER(v_package_name);
+    
+    IF v_package_price IS NULL THEN
+      v_package_price := 0;
+    END IF;
+  END IF;
+  
+  -- Calculate device price based on sale type
+  IF NEW.sale_type = 'FS' THEN
+    v_device_price := 65000;
+  ELSIF NEW.sale_type = 'DO' THEN
+    v_device_price := 25000;
+  ELSE
+    v_device_price := 0;
+  END IF;
+  
+  -- Calculate total sale amount
+  NEW.sale_amount := v_device_price + v_package_price;
   
   -- Calculate commission
   SELECT * INTO v_commission
@@ -185,7 +237,7 @@ $$ LANGUAGE plpgsql;
 -- Create trigger
 DROP TRIGGER IF EXISTS trigger_calculate_commission ON public.sales;
 CREATE TRIGGER trigger_calculate_commission
-  BEFORE INSERT OR UPDATE OF payment_status, admin_approved, package_option
+  BEFORE INSERT OR UPDATE OF payment_status, admin_approved, package_option, sale_type
   ON public.sales
   FOR EACH ROW
   EXECUTE FUNCTION public.update_sale_commission();
@@ -194,10 +246,16 @@ CREATE TRIGGER trigger_calculate_commission
 ALTER TABLE public.commission_rates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.package_commission_rates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.dsr_bonus_tiers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.dstv_packages ENABLE ROW LEVEL SECURITY;
+
+-- Create RLS policies for dstv_packages
+CREATE POLICY "Anyone can view active packages" ON public.dstv_packages
+  FOR SELECT USING (is_active = TRUE);
 
 -- Grant permissions
 GRANT SELECT ON public.commission_rates TO authenticated;
 GRANT SELECT ON public.package_commission_rates TO authenticated;
 GRANT SELECT ON public.dsr_bonus_tiers TO authenticated;
+GRANT SELECT ON public.dstv_packages TO authenticated;
 
 SELECT 'Commission system migration applied successfully' as status;
