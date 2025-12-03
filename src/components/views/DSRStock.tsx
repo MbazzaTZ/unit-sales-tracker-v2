@@ -139,12 +139,9 @@ export function DSRStock({ onNavigate }: DSRStockProps = {}) {
         assignedBy: item.assigned_by_user?.profiles?.full_name || 'Admin',
       }));
 
-      // Separate new stock from existing stock
-      const newStock = transformedStock.filter(s => s.status === 'assigned-dsr');
-      const existingStock = transformedStock.filter(s => s.status !== 'assigned-dsr');
-
-      setNewStockAssigned(newStock);
-      setMyStock(existingStock);
+      // All assigned-dsr stock is available for sale (no separate new/accepted states)
+      setNewStockAssigned([]);
+      setMyStock(transformedStock);
 
     } catch (error) {
       console.error('Error fetching stock data:', error);
@@ -164,26 +161,8 @@ export function DSRStock({ onNavigate }: DSRStockProps = {}) {
   });
 
   const handleAcceptStock = async (item: StockItem) => {
-    try {
-      // Stock is already 'assigned-dsr' which means in-hand, just acknowledge it
-      // No status change needed
-      const { error } = await supabase
-        .from('stock')
-        .update({ date_assigned: new Date().toISOString() })
-        .eq('id', item.stock_id);
-
-      if (error) throw error;
-
-      // Move to my stock
-      const updatedItem = { ...item, status: 'in-hand' as const };
-      setMyStock([updatedItem, ...myStock]);
-      setNewStockAssigned(newStockAssigned.filter(stock => stock.id !== item.id));
-      
-      toast.success(`Stock accepted successfully!`);
-    } catch (error: any) {
-      console.error('Error accepting stock:', error);
-      toast.error(error.message || 'Failed to accept stock');
-    }
+    // No longer needed - stock is automatically available
+    toast.info('Stock is already available for sale');
   };
 
   const handleRejectStock = (item: StockItem) => {
