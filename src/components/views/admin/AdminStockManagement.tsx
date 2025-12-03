@@ -310,15 +310,19 @@ export function AdminStockManagement() {
   // Delete stock mutation
   const deleteStockMutation = useMutation({
     mutationFn: async (ids: string[]) => {
-      const { error } = await supabase
+      const { error, count } = await supabase
         .from('stock')
         .delete()
-        .in('id', ids);
+        .in('id', ids)
+        .select();
       
       if (error) throw error;
+      return count;
     },
-    onSuccess: (_, ids) => {
-      queryClient.invalidateQueries({ queryKey: ['stock'] });
+    onSuccess: async (count, ids) => {
+      // Force refetch the stock data
+      await queryClient.invalidateQueries({ queryKey: ['stock'] });
+      await queryClient.refetchQueries({ queryKey: ['stock'] });
       toast({ title: `${ids.length} item(s) deleted successfully` });
       setSelectedItems(new Set());
     },
