@@ -37,6 +37,7 @@ const adminMenuItems = [
   { id: 'assign', label: 'Assign Stock', icon: Target },
   { id: 'tls', label: 'TL Management', icon: UserCheck },
   { id: 'managers', label: 'Manager Management', icon: Users },
+  { id: 'des', label: 'DE Management', icon: Users },
   { id: 'approvals', label: 'Approvals', icon: CheckSquare },
   { id: 'reports', label: 'Reports', icon: BarChart3 },
   { id: 'profile', label: 'Profile', icon: Settings },
@@ -69,6 +70,14 @@ const managerMenuItems = [
   { id: 'profile', label: 'Profile', icon: Settings },
 ];
 
+const deMenuItems = [
+  { id: 'dashboard', label: 'DE Dashboard', icon: LayoutDashboard },
+  { id: 'agents', label: 'My Agents', icon: Users },
+  { id: 'sales', label: 'Agent Sales Entry', icon: ShoppingCart },
+  { id: 'reports', label: 'Sales Report', icon: BarChart3 },
+  { id: 'profile', label: 'Profile', icon: Settings },
+];
+
 export function Sidebar({ role, activeTab, onTabChange, isMobileOpen, onMobileClose }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
   const navigate = useNavigate();
@@ -85,7 +94,9 @@ export function Sidebar({ role, activeTab, onTabChange, isMobileOpen, onMobileCl
       ? tlMenuItems 
       : role === 'manager'
         ? managerMenuItems
-        : dsrMenuItems;
+        : role === 'de'
+          ? deMenuItems
+          : dsrMenuItems;
 
   async function handleLogout() {
     try {

@@ -1,4 +1,4 @@
-export type UserRole = 'admin' | 'tl' | 'dsr' | 'manager';
+export type UserRole = 'admin' | 'tl' | 'dsr' | 'manager' | 'de';
 
 export type PaymentStatus = 'paid' | 'unpaid';
 export type StockStatus = 'in-hand' | 'sold-paid' | 'sold-unpaid' | 'assigned' | 'unassigned';

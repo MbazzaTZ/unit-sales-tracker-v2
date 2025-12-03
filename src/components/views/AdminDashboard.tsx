@@ -29,7 +29,8 @@ export function AdminDashboard() {
     unpaidSales: 0,
     totalTLs: 0,
     totalTeams: 0,
-    totalDSRs: 0
+    totalDSRs: 0,
+    totalDEs: 0
   });
   const [regions, setRegions] = useState<any[]>([]);
 
@@ -46,14 +47,21 @@ export function AdminDashboard() {
       
       if (stockError) throw stockError;
 
-      // Fetch sales
+      // Fetch DSR sales
       const { data: sales, error: salesError } = await supabase
         .from('sales')
         .select('payment_status');
       
       if (salesError) throw salesError;
 
-      // Fetch counts for TLs, Teams, DSRs
+      // Fetch DE agent sales
+      const { data: agentSales, error: agentSalesError } = await supabase
+        .from('agent_sales')
+        .select('sale_amount');
+      
+      if (agentSalesError) throw agentSalesError;
+
+      // Fetch counts for TLs, Teams, DSRs, DEs
       const { count: tlCount } = await supabase
         .from('team_leaders')
         .select('*', { count: 'exact', head: true });
@@ -64,6 +72,10 @@ export function AdminDashboard() {
       
       const { count: dsrCount } = await supabase
         .from('dsrs')
+        .select('*', { count: 'exact', head: true });
+      
+      const { count: deCount } = await supabase
+        .from('distribution_executives')
         .select('*', { count: 'exact', head: true });
 
       // Fetch regions with aggregated data
@@ -85,9 +97,13 @@ export function AdminDashboard() {
         s.status === 'assigned-dsr' || s.status === 'assigned-team'
       ).length || 0;
       
-      const totalSales = sales?.length || 0;
+      // Combine DSR sales and DE agent sales
+      const dsrSalesCount = sales?.length || 0;
+      const agentSalesCount = agentSales?.length || 0;
+      const totalSales = dsrSalesCount + agentSalesCount;
       const paidSales = sales?.filter(s => s.payment_status === 'paid').length || 0;
       const unpaidSales = sales?.filter(s => s.payment_status === 'unpaid').length || 0;
+      // Note: Agent sales don't have payment status tracking - they're all considered paid
 
       setMetrics({
         totalStock,
@@ -97,7 +113,8 @@ export function AdminDashboard() {
         unpaidSales,
         totalTLs: tlCount || 0,
         totalTeams: teamCount || 0,
-        totalDSRs: dsrCount || 0
+        totalDSRs: dsrCount || 0,
+        totalDEs: deCount || 0
       });
 
       // Format regions with all required fields
@@ -180,8 +197,8 @@ export function AdminDashboard() {
           variant="danger"
         />
         <MetricCard 
-          title="TLs / Teams / DSRs" 
-          value={`${metrics.totalTLs} / ${metrics.totalTeams} / ${metrics.totalDSRs}`} 
+          title="TLs / Teams / DSRs / DEs" 
+          value={`${metrics.totalTLs} / ${metrics.totalTeams} / ${metrics.totalDSRs} / ${metrics.totalDEs}`} 
           icon={Users}
         />
       </div>

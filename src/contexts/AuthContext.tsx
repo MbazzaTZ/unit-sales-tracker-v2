@@ -60,13 +60,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .select('role')
         .eq('user_id', userId);
       
-      // Priority: admin > manager > tl > dsr
+      // Priority: admin > manager > de > tl > dsr
       if (rolesData && rolesData.length > 0) {
         const roles = rolesData.map(r => r.role);
         if (roles.includes('admin')) {
           setUserRole('admin');
         } else if (roles.includes('manager')) {
           setUserRole('manager');
+        } else if (roles.includes('de')) {
+          setUserRole('de' as UserRole);
         } else if (roles.includes('tl')) {
           setUserRole('tl');
         } else if (roles.includes('dsr')) {

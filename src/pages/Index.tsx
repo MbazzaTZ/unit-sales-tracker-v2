@@ -9,12 +9,14 @@ import { GeneralDashboard } from '@/components/views/GeneralDashboard';
 import { DSRStock } from '@/components/views/DSRStock';
 import { DSRAddSale } from '@/components/views/DSRAddSale';
 import { DSRMySales } from '@/components/views/DSRMySales';
+import { DSRCommission } from '@/components/views/DSRCommission';
 import { AdminStockManagement } from '@/components/views/AdminStockManagement';
 import { AdminTLManagement } from '@/components/views/AdminTLManagement';
 import { AdminManagerManagement } from '@/components/views/AdminManagerManagement';
 import { AdminAssignStock } from '@/components/views/AdminAssignStock';
 import { AdminApprovals } from '@/components/views/AdminApprovals';
 import { AdminRegionManagement } from '@/components/views/AdminRegionManagement';
+import { AdminDEManagement } from '@/components/views/AdminDEManagement';
 import { TLTeamManagement } from '@/components/views/TLTeamManagement';
 import { TLDSRManagement } from '@/components/views/TLDSRManagement';
 import { TLStockManagement } from '@/components/views/TLStockManagement';
@@ -24,6 +26,10 @@ import { Profile } from '@/components/views/Profile';
 import ManagerDashboard from '@/components/views/ManagerDashboard';
 import ManagerStock from '@/components/views/ManagerStock';
 import ManagerSalesTeam from '@/components/views/ManagerSalesTeam';
+import { DEDashboard } from '@/components/views/DEDashboard';
+import { DEAgents } from '@/components/views/DEAgents';
+import { DEAgentSales } from '@/components/views/DEAgentSales';
+import { DESalesReport } from '@/components/views/DESalesReport';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserRole } from '@/types/tsm';
 import { Loader2 } from 'lucide-react';
@@ -45,6 +51,8 @@ const Index = () => {
       setActiveTab('dashboard');
     } else if (userRole === 'admin' || userRole === 'tl') {
       setActiveTab('general');
+    } else if (userRole === 'de') {
+      setActiveTab('dashboard');
     }
   }, [userRole]);
 
@@ -77,6 +85,8 @@ const Index = () => {
           return <AdminTLManagement />;
         case 'managers':
           return <AdminManagerManagement />;
+        case 'des':
+          return <AdminDEManagement />;
         case 'approvals':
           return <AdminApprovals />;
         case 'profile':
@@ -119,6 +129,8 @@ const Index = () => {
           return <DSRAddSale onNavigate={setActiveTab} />;
         case 'my-sales':
           return <DSRMySales onNavigate={setActiveTab} />;
+        case 'commission':
+          return <DSRCommission onNavigate={setActiveTab} />;
         case 'profile':
           return <Profile />;
         default:
@@ -138,6 +150,23 @@ const Index = () => {
           return <Profile />;
         default:
           return <ManagerDashboard />;
+      }
+    }
+
+    if (userRole === 'de') {
+      switch (activeTab) {
+        case 'dashboard':
+          return <DEDashboard />;
+        case 'agents':
+          return <DEAgents />;
+        case 'sales':
+          return <DEAgentSales />;
+        case 'reports':
+          return <DESalesReport />;
+        case 'profile':
+          return <Profile />;
+        default:
+          return <DEDashboard />;
       }
     }
 
