@@ -143,6 +143,8 @@ export function TLStockManagement() {
       }
 
       // Fetch stock assigned to this TL or their teams/DSRs
+      console.log('Fetching stock for TL ID:', tlData.id);
+      
       const { data: stockData, error } = await supabase
         .from('stock')
         .select(`
@@ -161,7 +163,8 @@ export function TLStockManagement() {
         });
       }
 
-      console.log('Stock fetched for TL:', tlData.id, stockData);
+      console.log('Stock fetched for TL:', tlData.id, 'Count:', stockData?.length || 0);
+      console.log('Stock data:', JSON.stringify(stockData, null, 2));
       
       // Manually fetch DSR and team info if needed
       if (stockData && stockData.length > 0) {
@@ -291,6 +294,13 @@ export function TLStockManagement() {
   const stockInHand = stocks.filter(s => s.status === 'in-hand');
   const stockSold = stocks.filter(s => s.status === 'sold');
   const stockUnpaid = stocks.filter(s => s.status === 'sold-unpaid');
+
+  console.log('TL Stock Summary:', {
+    total: stocks.length,
+    statuses: stocks.map(s => ({ id: s.stock_id, status: s.status, assigned_to_dsr: s.assigned_to_dsr })),
+    availableCount: availableStock.length,
+    assignedCount: assignedStock.length
+  });
 
   return (
     <div className="p-6 space-y-6">
