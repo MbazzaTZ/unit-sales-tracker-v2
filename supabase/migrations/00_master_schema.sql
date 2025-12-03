@@ -434,6 +434,8 @@ CREATE POLICY "System can create notifications" ON public.notifications FOR INSE
 -- Trigger to create profile on user signup
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
+DECLARE
+  user_role app_role;
 BEGIN
   INSERT INTO public.profiles (id, full_name, email)
   VALUES (
@@ -442,9 +444,12 @@ BEGIN
     NEW.email
   );
   
-  -- Insert default DSR role
+  -- Check if role is specified in metadata, otherwise default to DSR
+  user_role := COALESCE(NEW.raw_user_meta_data->>'role', 'dsr')::app_role;
+  
+  -- Insert role
   INSERT INTO public.user_roles (user_id, role)
-  VALUES (NEW.id, 'dsr');
+  VALUES (NEW.id, user_role);
   
   RETURN NEW;
 END;

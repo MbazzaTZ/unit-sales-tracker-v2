@@ -1,9 +1,22 @@
-import { stockFlowData } from '@/data/mockData';
 import { Progress } from '@/components/ui/progress';
 import { ArrowRight } from 'lucide-react';
 
-export function StockFlowChart() {
-  const maxValue = stockFlowData[0].value;
+// Default empty data structure
+const defaultStockFlowData = [
+  { name: 'Admin Stock', value: 0 },
+  { name: 'TL Assigned', value: 0 },
+  { name: 'Team Assigned', value: 0 },
+  { name: 'DSR Stock', value: 0 },
+  { name: 'Sold', value: 0 }
+];
+
+interface StockFlowChartProps {
+  data?: Array<{ name: string; value: number }>;
+}
+
+export function StockFlowChart({ data = defaultStockFlowData }: StockFlowChartProps = {}) {
+  const stockFlowData = data.length > 0 ? data : defaultStockFlowData;
+  const maxValue = Math.max(...stockFlowData.map(item => item.value), 1);
 
   return (
     <div className="glass rounded-xl p-5 border border-border/50 animate-fade-in">
@@ -40,7 +53,9 @@ export function StockFlowChart() {
         <div className="flex justify-between text-sm">
           <span className="text-muted-foreground">Conversion Rate</span>
           <span className="font-bold text-success">
-            {Math.round((stockFlowData[4].value / stockFlowData[0].value) * 100)}%
+            {stockFlowData[0].value > 0 
+              ? Math.round((stockFlowData[4].value / stockFlowData[0].value) * 100)
+              : 0}%
           </span>
         </div>
       </div>

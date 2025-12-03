@@ -77,29 +77,36 @@ export const AdminDEManagement = () => {
   // Create DE
   const createDEMutation = useMutation({
     mutationFn: async (deData: any) => {
-      // Step 1 — Create Auth.User
+      // Step 1 — Create Auth.User with DE role in metadata
       const { data: authData, error: authError } = await supabase.auth.admin.createUser({
         email: deData.email,
         password: deData.password,
         email_confirm: true,
+        user_metadata: {
+          full_name: deData.full_name,
+          phone_number: deData.phone_number,
+          role: 'de'
+        }
       });
 
       if (authError) throw authError;
 
       const userId = authData.user.id;
 
-      // Step 2 — Update profile
+      // Step 2 — Wait for trigger to create profile and role
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Step 3 — Update profile with phone number
       const { error: profileError } = await supabase
         .from("profiles")
         .update({
-          full_name: deData.full_name,
           phone_number: deData.phone_number,
         })
         .eq("id", userId);
 
       if (profileError) throw profileError;
 
-      // Step 3 — Create DE row
+      // Step 4 — Create DE row
       const { error: deError } = await supabase
         .from("distribution_executives")
         .insert({
@@ -110,16 +117,6 @@ export const AdminDEManagement = () => {
         });
 
       if (deError) throw deError;
-
-      // Step 4 — Assign role
-      const { error: roleError } = await supabase
-        .from("user_roles")
-        .insert({
-          user_id: userId,
-          role: "de",
-        });
-
-      if (roleError) throw roleError;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["distribution-executives"] });

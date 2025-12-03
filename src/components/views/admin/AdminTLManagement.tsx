@@ -125,48 +125,23 @@ export function AdminTLManagement() {
   // Create TL mutation
   const createTLMutation = useMutation({
     mutationFn: async () => {
-      // Create user
+      // Create user with TL role in metadata
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          data: { full_name: fullName }
+          data: { 
+            full_name: fullName,
+            role: 'tl'
+          }
         }
       });
       
       if (authError) throw authError;
       if (!authData.user) throw new Error('Failed to create user');
       
-      // Wait a bit for profile to be created by trigger
+      // Wait a bit for profile and role to be created by trigger
       await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Ensure profile exists with correct data
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .upsert({
-          id: authData.user.id,
-          full_name: fullName,
-          email: email
-        });
-      
-      if (profileError) console.error('Profile upsert error:', profileError);
-      
-      // Delete default DSR role
-      await supabase
-        .from('user_roles')
-        .delete()
-        .eq('user_id', authData.user.id)
-        .eq('role', 'dsr');
-      
-      // Insert TL role
-      const { error: roleError } = await supabase
-        .from('user_roles')
-        .insert({
-          user_id: authData.user.id,
-          role: 'tl'
-        });
-      
-      if (roleError) throw roleError;
       
       // Create TL record
       const { error: tlError } = await supabase

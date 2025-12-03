@@ -88,11 +88,11 @@ export function AdminManagerManagement() {
     mutationFn: async (payload: any) => {
       const { email, password, fullName, phoneNumber, managerType, zoneId, territoryIds } = payload;
 
-      // 1. Create user
+      // 1. Create user with manager role in metadata
       const { data: authData, error: authErr } = await supabase.auth.signUp({
         email,
         password,
-        options: { data: { full_name: fullName, phone_number: phoneNumber } },
+        options: { data: { full_name: fullName, phone_number: phoneNumber, role: 'manager' } },
       });
 
       if (authErr) throw authErr;
@@ -100,13 +100,15 @@ export function AdminManagerManagement() {
 
       const userId = authData.user.id;
 
-      // 2. Update profile
+      // 2. Wait for trigger to create profile and role
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // 3. Update profile with phone number
       await supabase.from("profiles").update({
-        full_name: fullName,
         phone_number: phoneNumber,
       }).eq("id", userId);
 
-      // 3. Insert manager
+      // 4. Insert manager record
       const { error: mgrErr } = await supabase.from("managers").insert({
         user_id: userId,
         manager_type: managerType,
@@ -115,12 +117,6 @@ export function AdminManagerManagement() {
       });
 
       if (mgrErr) throw mgrErr;
-
-      // 4. Assign role
-      await supabase.from("user_roles").insert({
-        user_id: userId,
-        role: "manager",
-      });
     },
     onSuccess: () => {
       toast.success("Manager created successfully");

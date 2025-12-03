@@ -10,13 +10,13 @@ import {
 } from 'recharts';
 
 interface SalesChartProps {
-  data: {
+  data?: {
     date: string;
     amount: number;
   }[];
 }
 
-export function SalesChart({ data }: SalesChartProps) {
+export function SalesChart({ data = [] }: SalesChartProps) {
   // Transform your data format to match what the chart expects
   const chartData = data.map(item => ({
     date: item.date,
@@ -24,6 +24,23 @@ export function SalesChart({ data }: SalesChartProps) {
     paid: item.amount, // You might want to adjust this based on your actual data
     unpaid: 0 // You might want to adjust this based on your actual data
   }));
+
+  // Show placeholder if no data
+  if (chartData.length === 0) {
+    return (
+      <div className="glass rounded-xl p-5 border border-border/50 animate-fade-in">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h3 className="font-semibold text-foreground">Sales Performance</h3>
+            <p className="text-sm text-muted-foreground">Last 30 days trend</p>
+          </div>
+        </div>
+        <div className="h-[280px] flex items-center justify-center text-muted-foreground">
+          <p>No sales data available yet</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="glass rounded-xl p-5 border border-border/50 animate-fade-in">
