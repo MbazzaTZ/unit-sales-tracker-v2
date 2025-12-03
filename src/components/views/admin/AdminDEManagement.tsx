@@ -27,6 +27,7 @@ import { Plus, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 export const AdminDEManagement = () => {
+  console.log("AdminDEManagement component rendered");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingDE, setEditingDE] = useState<any>(null);
 
