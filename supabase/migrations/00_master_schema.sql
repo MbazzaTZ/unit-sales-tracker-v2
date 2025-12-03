@@ -20,11 +20,35 @@
 -- STEP 1: CREATE ENUMS
 -- ============================================
 
-CREATE TYPE public.app_role AS ENUM ('admin', 'tl', 'dsr', 'manager', 'de');
-CREATE TYPE public.stock_status AS ENUM ('unassigned', 'assigned-tl', 'assigned-team', 'assigned-dsr', 'sold-paid', 'sold-unpaid');
-CREATE TYPE public.payment_status AS ENUM ('paid', 'unpaid');
-CREATE TYPE public.sale_type AS ENUM ('FS', 'DO', 'DVS');
-CREATE TYPE public.manager_type AS ENUM ('TSM', 'RSM');
+DO $$ BEGIN
+  CREATE TYPE public.app_role AS ENUM ('admin', 'tl', 'dsr', 'manager', 'de');
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE public.stock_status AS ENUM ('unassigned', 'assigned-tl', 'assigned-team', 'assigned-dsr', 'sold-paid', 'sold-unpaid');
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE public.payment_status AS ENUM ('paid', 'unpaid');
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE public.sale_type AS ENUM ('FS', 'DO', 'DVS');
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE public.manager_type AS ENUM ('TSM', 'RSM');
+EXCEPTION
+  WHEN duplicate_object THEN null;
+END $$;
 
 -- ============================================
 -- STEP 2: CREATE CORE TABLES
