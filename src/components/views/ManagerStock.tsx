@@ -71,9 +71,9 @@ export default function ManagerStock() {
 
       // Calculate stats (count items)
       const total = formattedStock.length;
-      const inHand = formattedStock.filter(item => item.status === 'in-hand').length;
-      const sold = formattedStock.filter(item => item.status === 'sold' || item.status === 'sold-unpaid').length;
-      const assigned = formattedStock.filter(item => item.status === 'assigned-dsr').length;
+      const inHand = formattedStock.filter(item => item.status === 'assigned-dsr').length;
+      const sold = formattedStock.filter(item => item.status === 'sold-paid' || item.status === 'sold-unpaid').length;
+      const assigned = formattedStock.filter(item => item.status?.includes('assigned')).length;
 
       setStats({ total, inHand, sold, assigned });
     } catch (error) {

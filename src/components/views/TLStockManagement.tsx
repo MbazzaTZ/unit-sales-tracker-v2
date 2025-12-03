@@ -291,8 +291,8 @@ export function TLStockManagement() {
 
   const availableStock = stocks.filter(s => s.status === 'assigned-tl' && !s.assigned_to_dsr);
   const assignedStock = stocks.filter(s => s.status === 'assigned-dsr' || s.status === 'assigned-team');
-  const stockInHand = stocks.filter(s => s.status === 'in-hand');
-  const stockSold = stocks.filter(s => s.status === 'sold');
+  const stockInHand = stocks.filter(s => s.status === 'assigned-dsr');
+  const stockSold = stocks.filter(s => s.status === 'sold-paid');
   const stockUnpaid = stocks.filter(s => s.status === 'sold-unpaid');
 
   console.log('TL Stock Summary:', {

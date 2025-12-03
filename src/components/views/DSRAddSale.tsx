@@ -111,7 +111,7 @@ export function DSRAddSale({ onNavigate }: DSRAddSaleProps) {
       setDsrId(dsrData.id);
       setTlId(dsrData.tl_id);
 
-      // Fetch available stock (in-hand)
+      // Fetch available stock (assigned-dsr means in-hand)
       const { data: stockData, error: stockError } = await supabase
         .from('stock')
         .select(`
@@ -125,7 +125,7 @@ export function DSRAddSale({ onNavigate }: DSRAddSaleProps) {
           )
         `)
         .eq('assigned_to_dsr', dsrData.id)
-        .eq('status', 'in-hand');
+        .eq('status', 'assigned-dsr');
 
       if (stockError) throw stockError;
 
@@ -222,7 +222,7 @@ export function DSRAddSale({ onNavigate }: DSRAddSaleProps) {
 
       // Update stock status only for FS/DO
       if (stockType !== 'DVS' && stock) {
-        const newStatus = paymentStatus === 'paid' ? 'sold' : 'sold-unpaid';
+        const newStatus = paymentStatus === 'paid' ? 'sold-paid' : 'sold-unpaid';
         const { error: stockError } = await supabase
           .from('stock')
           .update({ 

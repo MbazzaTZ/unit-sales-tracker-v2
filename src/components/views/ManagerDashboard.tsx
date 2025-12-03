@@ -74,7 +74,7 @@ export default function ManagerDashboard() {
       const { data: stock } = await supabase
         .from('stock')
         .select('id')
-        .eq('status', 'in-hand');
+        .eq('status', 'assigned-dsr');
 
       const stockInHand = stock?.length || 0;
 

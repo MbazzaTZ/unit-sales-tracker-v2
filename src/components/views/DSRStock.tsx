@@ -54,9 +54,8 @@ const statusConfig: Record<string, { label: string; className: string }> = {
   'unassigned': { label: 'Unassigned', className: 'bg-gray-500/10 text-gray-500' },
   'assigned-tl': { label: 'Assigned to TL', className: 'bg-blue-500/10 text-blue-500' },
   'assigned-team': { label: 'Assigned to Team', className: 'bg-indigo-500/10 text-indigo-500' },
-  'assigned-dsr': { label: 'Newly Assigned', className: 'bg-warning/10 text-warning' },
-  'in-hand': { label: 'In Hand', className: 'bg-info/10 text-info' },
-  'sold': { label: 'Sold (Paid)', className: 'bg-success/10 text-success' },
+  'assigned-dsr': { label: 'In Hand', className: 'bg-info/10 text-info' },
+  'sold-paid': { label: 'Sold (Paid)', className: 'bg-success/10 text-success' },
   'sold-unpaid': { label: 'Sold (Unpaid)', className: 'bg-destructive/10 text-destructive' },
 };
 
@@ -157,19 +156,20 @@ export function DSRStock({ onNavigate }: DSRStockProps = {}) {
 
   const filteredStock = myStock.filter(item => {
     if (filter === 'all') return true;
-    if (filter === 'in-hand') return item.status === 'in-hand';
-    if (filter === 'paid') return item.status === 'sold';
+    if (filter === 'in-hand') return item.status === 'assigned-dsr';
+    if (filter === 'paid') return item.status === 'sold-paid';
     if (filter === 'unpaid') return item.status === 'sold-unpaid';
-    if (filter === 'new') return item.status === 'assigned-dsr';
+    if (filter === 'new') return false; // No separate new status
     return true;
   });
 
   const handleAcceptStock = async (item: StockItem) => {
     try {
-      // Update stock status to in-hand
+      // Stock is already 'assigned-dsr' which means in-hand, just acknowledge it
+      // No status change needed
       const { error } = await supabase
         .from('stock')
-        .update({ status: 'in-hand' })
+        .update({ date_assigned: new Date().toISOString() })
         .eq('id', item.stock_id);
 
       if (error) throw error;
@@ -237,8 +237,8 @@ export function DSRStock({ onNavigate }: DSRStockProps = {}) {
   };
 
   const getStockCount = () => {
-    const inHand = myStock.filter(s => s.status === 'in-hand').length;
-    const soldPaid = myStock.filter(s => s.status === 'sold').length;
+    const inHand = myStock.filter(s => s.status === 'assigned-dsr').length;
+    const soldPaid = myStock.filter(s => s.status === 'sold-paid').length;
     const soldUnpaid = myStock.filter(s => s.status === 'sold-unpaid').length;
     return { inHand, soldPaid, soldUnpaid, total: inHand + soldPaid + soldUnpaid };
   };
