@@ -98,9 +98,16 @@ export function DSRAddSale({ onNavigate }: DSRAddSaleProps) {
         .from('dsrs')
         .select('id, tl_id')
         .eq('user_id', user.id)
-        .single();
+        .maybeSingle();
 
       if (dsrError) throw dsrError;
+      
+      if (!dsrData) {
+        console.log('No DSR record found for user');
+        setLoading(false);
+        return;
+      }
+      
       setDsrId(dsrData.id);
       setTlId(dsrData.tl_id);
 

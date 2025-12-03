@@ -87,9 +87,16 @@ export function DSRStock({ onNavigate }: DSRStockProps = {}) {
         .from('dsrs')
         .select('id')
         .eq('user_id', user.id)
-        .single();
+        .maybeSingle();
 
       if (dsrError) throw dsrError;
+      
+      if (!dsrData) {
+        console.log('No DSR record found for user');
+        setLoading(false);
+        return;
+      }
+      
       setDsrId(dsrData.id);
 
       // Fetch stock assigned to this DSR

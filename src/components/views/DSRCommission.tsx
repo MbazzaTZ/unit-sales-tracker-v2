@@ -38,9 +38,10 @@ export const DSRCommission = ({ onNavigate }: DSRCommissionProps) => {
           team_leaders(profiles(full_name))
         `)
         .eq('user_id', user.id)
-        .single();
+        .maybeSingle();
 
       if (error) throw error;
+      if (!data) return null;
       return data;
     },
   });

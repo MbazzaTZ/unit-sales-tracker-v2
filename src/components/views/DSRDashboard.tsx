@@ -71,9 +71,15 @@ export function DSRDashboard({ onNavigate }: DSRDashboardProps) {
         .from('dsrs')
         .select('id')
         .eq('user_id', user.id)
-        .single();
+        .maybeSingle();
 
       if (dsrError) throw dsrError;
+      
+      if (!dsrData) {
+        console.log('No DSR record found for user');
+        setLoading(false);
+        return;
+      }
 
       setDsrId(dsrData.id);
       setDsrName(profile?.full_name || 'DSR');
@@ -159,6 +165,20 @@ export function DSRDashboard({ onNavigate }: DSRDashboardProps) {
     return (
       <div className="flex items-center justify-center h-full">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (!dsrId) {
+    return (
+      <div className="flex items-center justify-center h-full p-6">
+        <div className="text-center max-w-md">
+          <AlertCircle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+          <h2 className="text-xl font-semibold mb-2">No DSR Record Found</h2>
+          <p className="text-muted-foreground mb-4">
+            Your account doesn't have a DSR record yet. Please contact your Team Leader or Administrator to set up your DSR profile.
+          </p>
+        </div>
       </div>
     );
   }

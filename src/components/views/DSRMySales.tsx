@@ -103,14 +103,17 @@ export function DSRMySales({ onNavigate }: DSRMySalesProps) {
       setLoading(true);
 
       // Get DSR ID
-      const { data: dsrData } = await supabase
+      const { data: dsrData, error: dsrError } = await supabase
         .from('dsrs')
         .select('id')
         .eq('user_id', user?.id)
-        .single();
+        .maybeSingle();
 
+      if (dsrError) throw dsrError;
+      
       if (!dsrData) {
-        console.error('DSR not found');
+        console.log('No DSR record found for user');
+        setLoading(false);
         return;
       }
 
