@@ -70,13 +70,13 @@ export default function ManagerDashboard() {
         .from('dsrs')
         .select('*', { count: 'only' });
 
-      // Get stock in hand
+      // Get stock in hand (each stock item is 1 unit)
       const { data: stock } = await supabase
         .from('stock')
-        .select('quantity')
-        .eq('status', 'stock-in-hand');
+        .select('id')
+        .eq('status', 'in-hand');
 
-      const stockInHand = stock?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0;
+      const stockInHand = stock?.length || 0;
 
       // Calculate weekly sales for chart
       const last7Days = Array.from({ length: 7 }, (_, i) => {

@@ -57,10 +57,10 @@ export default function ManagerStock() {
 
       const formattedStock = stockData?.map(item => ({
         id: item.id,
-        smartcard_number: item.smartcard_number || 'N/A',
-        serial_number: item.serial_number || 'N/A',
-        stock_type: item.stock_type || 'N/A',
-        quantity: item.quantity || 0,
+        smartcard_number: item.stock_id || 'N/A',
+        serial_number: item.stock_id || 'N/A',
+        stock_type: item.type || 'N/A',
+        quantity: 1, // Each stock item is 1 unit
         status: item.status || 'unknown',
         assigned_to_dsr: item.assigned_to_dsr,
         dsr_name: item.dsrs?.profiles?.full_name || 'N/A',
@@ -69,17 +69,11 @@ export default function ManagerStock() {
 
       setStock(formattedStock);
 
-      // Calculate stats
-      const total = formattedStock.reduce((sum, item) => sum + item.quantity, 0);
-      const inHand = formattedStock
-        .filter(item => item.status === 'stock-in-hand')
-        .reduce((sum, item) => sum + item.quantity, 0);
-      const sold = formattedStock
-        .filter(item => item.status === 'stock-sold' || item.status === 'stock-sold-unpaid')
-        .reduce((sum, item) => sum + item.quantity, 0);
-      const assigned = formattedStock
-        .filter(item => item.status === 'assigned-dsr')
-        .reduce((sum, item) => sum + item.quantity, 0);
+      // Calculate stats (count items)
+      const total = formattedStock.length;
+      const inHand = formattedStock.filter(item => item.status === 'in-hand').length;
+      const sold = formattedStock.filter(item => item.status === 'sold' || item.status === 'sold-unpaid').length;
+      const assigned = formattedStock.filter(item => item.status === 'assigned-dsr').length;
 
       setStats({ total, inHand, sold, assigned });
     } catch (error) {
