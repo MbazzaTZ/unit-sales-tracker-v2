@@ -22,6 +22,7 @@ const AdminAssignStock = lazy(() => import('@/components/views/AdminAssignStock'
 const AdminApprovals = lazy(() => import('@/components/views/AdminApprovals').then(m => ({ default: m.AdminApprovals })));
 const AdminRegionManagement = lazy(() => import('@/components/views/AdminRegionManagement').then(m => ({ default: m.AdminRegionManagement })));
 const AdminDEManagement = lazy(() => import('@/components/views/AdminDEManagement').then(m => ({ default: m.AdminDEManagement })));
+const AdminCommissionManagement = lazy(() => import('@/components/views/AdminCommissionManagement').then(m => ({ default: m.AdminCommissionManagement })));
 const TLTeamManagement = lazy(() => import('@/components/views/TLTeamManagement').then(m => ({ default: m.TLTeamManagement })));
 const TLDSRManagement = lazy(() => import('@/components/views/TLDSRManagement').then(m => ({ default: m.TLDSRManagement })));
 const TLStockManagement = lazy(() => import('@/components/views/TLStockManagement').then(m => ({ default: m.TLStockManagement })));
@@ -98,6 +99,8 @@ const Index = () => {
           return <AdminDEManagement />;
         case 'approvals':
           return <AdminApprovals />;
+        case 'commission':
+          return <AdminCommissionManagement />;
         case 'profile':
           return <Profile />;
         default:

@@ -9,6 +9,7 @@ import {
   Settings,
   Target,
   MapPin,
+  DollarSign,
   CheckSquare,
   LogOut,
   ChevronLeft,
@@ -39,6 +40,7 @@ const adminMenuItems = [
   { id: 'managers', label: 'Manager Management', icon: Users },
   { id: 'des', label: 'DE Management', icon: Users },
   { id: 'approvals', label: 'Approvals', icon: CheckSquare },
+  { id: 'commission', label: 'Commission & Bonus', icon: DollarSign },
   { id: 'reports', label: 'Reports', icon: BarChart3 },
   { id: 'profile', label: 'Profile', icon: Settings },
 ];
