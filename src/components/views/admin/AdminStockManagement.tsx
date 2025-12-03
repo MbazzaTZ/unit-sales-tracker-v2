@@ -223,9 +223,25 @@ export function AdminStockManagement() {
     }
   });
 
-  // Create batch mutation
+  // Create or get batch mutation
   const createBatchMutation = useMutation({
     mutationFn: async (batchNum: string) => {
+      // First check if batch exists
+      const { data: existingBatch, error: checkError } = await supabase
+        .from('stock_batches')
+        .select('*')
+        .eq('batch_number', batchNum)
+        .maybeSingle();
+      
+      if (checkError) throw checkError;
+      
+      // If batch exists, return it
+      if (existingBatch) {
+        console.log(`Batch "${batchNum}" already exists, using existing batch`);
+        return existingBatch;
+      }
+      
+      // Otherwise create new batch
       const { data, error } = await supabase
         .from('stock_batches')
         .insert({ batch_number: batchNum })
@@ -233,6 +249,7 @@ export function AdminStockManagement() {
         .single();
       
       if (error) throw error;
+      console.log(`Created new batch "${batchNum}"`);
       return data;
     },
     onSuccess: () => {
