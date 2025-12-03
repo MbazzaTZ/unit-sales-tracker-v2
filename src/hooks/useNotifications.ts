@@ -34,7 +34,8 @@ export function useNotifications() {
       if (error) throw error;
       return data as Notification[];
     },
-    refetchInterval: 30000, // Poll every 30 seconds
+    refetchInterval: 60000, // Poll every 60 seconds (reduced from 30)
+    staleTime: 30000, // Consider data fresh for 30 seconds
   });
 
   // Mark as read mutation

@@ -17,8 +17,11 @@ interface EarningsData {
   nextBonusIn: number;
 }
 
-export function DSREarningsDashboard() {
-  const { user } = useAuth();
+interface DSREarningsDashboardProps {
+  dsrId?: string | null;
+}
+
+export function DSREarningsDashboard({ dsrId }: DSREarningsDashboardProps) {
   const [loading, setLoading] = useState(true);
   const [earnings, setEarnings] = useState<EarningsData>({
     totalSales: 0,
@@ -31,33 +34,32 @@ export function DSREarningsDashboard() {
   });
 
   useEffect(() => {
-    if (user) {
+    if (dsrId) {
       fetchEarnings();
+    } else {
+      setLoading(false);
     }
-  }, [user]);
+  }, [dsrId]);
 
   async function fetchEarnings() {
+    if (!dsrId) {
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
-
-      // Get DSR ID
-      const { data: dsrData } = await supabase
-        .from('dsrs')
-        .select('id')
-        .eq('user_id', user?.id)
-        .single();
-
-      if (!dsrData) return;
 
       // Fetch earnings from view
       const { data: earningsData, error } = await supabase
         .from('dsr_earnings_view')
         .select('*')
-        .eq('dsr_id', dsrData.id)
-        .single();
+        .eq('dsr_id', dsrId)
+        .maybeSingle();
 
       if (error) {
         console.error('Error fetching earnings:', error);
+        setLoading(false);
         return;
       }
 
@@ -65,7 +67,7 @@ export function DSREarningsDashboard() {
       const { data: pendingData } = await supabase
         .from('sales')
         .select('total_commission')
-        .eq('dsr_id', dsrData.id)
+        .eq('dsr_id', dsrId)
         .in('commission_status', ['pending', 'pending-payment']);
 
       const pendingCommission = pendingData?.reduce((sum, sale) => sum + (sale.total_commission || 0), 0) || 0;
@@ -89,6 +91,11 @@ export function DSREarningsDashboard() {
     } finally {
       setLoading(false);
     }
+  }
+
+  // Don't show anything if no dsrId provided
+  if (!dsrId) {
+    return null;
   }
 
   if (loading) {

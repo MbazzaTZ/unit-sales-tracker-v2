@@ -8,7 +8,18 @@ import Index from "./pages/Index";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
-const queryClient = new QueryClient();
+// Optimized QueryClient configuration for better performance
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30000, // Data considered fresh for 30 seconds
+      gcTime: 5 * 60 * 1000, // Cache garbage collection after 5 minutes
+      refetchOnWindowFocus: false, // Don't refetch on window focus
+      refetchOnReconnect: true, // Refetch on reconnect
+      retry: 1, // Only retry failed requests once
+    },
+  },
+});
 
 const App = () => (
   <QueryClientProvider client={queryClient}>

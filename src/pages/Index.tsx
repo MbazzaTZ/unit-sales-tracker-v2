@@ -1,38 +1,47 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { Header } from '@/components/layout/Header';
-import { AdminDashboard } from '@/components/views/AdminDashboard';
-import { TLDashboard } from '@/components/views/TLDashboard';
-import { DSRDashboard } from '@/components/views/DSRDashboard';
-import { GeneralDashboard } from '@/components/views/GeneralDashboard';
-import { DSRStock } from '@/components/views/DSRStock';
-import { DSRAddSale } from '@/components/views/DSRAddSale';
-import { DSRMySales } from '@/components/views/DSRMySales';
-import { DSRCommission } from '@/components/views/DSRCommission';
-import { AdminStockManagement } from '@/components/views/AdminStockManagement';
-import { AdminTLManagement } from '@/components/views/AdminTLManagement';
-import { AdminManagerManagement } from '@/components/views/AdminManagerManagement';
-import { AdminAssignStock } from '@/components/views/AdminAssignStock';
-import { AdminApprovals } from '@/components/views/AdminApprovals';
-import { AdminRegionManagement } from '@/components/views/AdminRegionManagement';
-import { AdminDEManagement } from '@/components/views/AdminDEManagement';
-import { TLTeamManagement } from '@/components/views/TLTeamManagement';
-import { TLDSRManagement } from '@/components/views/TLDSRManagement';
-import { TLStockManagement } from '@/components/views/TLStockManagement';
-import { TLSalesVerification } from '@/components/views/TLSalesVerification';
-import { TLReports } from '@/components/views/TLReports';
-import { GeneralDashboard as Profile } from '@/components/views/Profile';
-import ManagerDashboard from '@/components/views/ManagerDashboard';
-import ManagerStock from '@/components/views/ManagerStock';
-import ManagerSalesTeam from '@/components/views/ManagerSalesTeam';
-import { DEDashboard } from '@/components/views/DEDashboard';
-import { DEAgents } from '@/components/views/DEAgents';
-import { DEAgentSales } from '@/components/views/DEAgentSales';
-import { DESalesReport } from '@/components/views/DESalesReport';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserRole } from '@/types/tsm';
 import { Loader2 } from 'lucide-react';
+
+// Lazy load heavy components for better initial load performance
+const AdminDashboard = lazy(() => import('@/components/views/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
+const TLDashboard = lazy(() => import('@/components/views/TLDashboard').then(m => ({ default: m.TLDashboard })));
+const DSRDashboard = lazy(() => import('@/components/views/DSRDashboard').then(m => ({ default: m.DSRDashboard })));
+const GeneralDashboard = lazy(() => import('@/components/views/GeneralDashboard').then(m => ({ default: m.GeneralDashboard })));
+const DSRStock = lazy(() => import('@/components/views/DSRStock').then(m => ({ default: m.DSRStock })));
+const DSRAddSale = lazy(() => import('@/components/views/DSRAddSale').then(m => ({ default: m.DSRAddSale })));
+const DSRMySales = lazy(() => import('@/components/views/DSRMySales').then(m => ({ default: m.DSRMySales })));
+const DSRCommission = lazy(() => import('@/components/views/DSRCommission').then(m => ({ default: m.DSRCommission })));
+const AdminStockManagement = lazy(() => import('@/components/views/AdminStockManagement').then(m => ({ default: m.AdminStockManagement })));
+const AdminTLManagement = lazy(() => import('@/components/views/AdminTLManagement').then(m => ({ default: m.AdminTLManagement })));
+const AdminManagerManagement = lazy(() => import('@/components/views/AdminManagerManagement').then(m => ({ default: m.AdminManagerManagement })));
+const AdminAssignStock = lazy(() => import('@/components/views/AdminAssignStock').then(m => ({ default: m.AdminAssignStock })));
+const AdminApprovals = lazy(() => import('@/components/views/AdminApprovals').then(m => ({ default: m.AdminApprovals })));
+const AdminRegionManagement = lazy(() => import('@/components/views/AdminRegionManagement').then(m => ({ default: m.AdminRegionManagement })));
+const AdminDEManagement = lazy(() => import('@/components/views/AdminDEManagement').then(m => ({ default: m.AdminDEManagement })));
+const TLTeamManagement = lazy(() => import('@/components/views/TLTeamManagement').then(m => ({ default: m.TLTeamManagement })));
+const TLDSRManagement = lazy(() => import('@/components/views/TLDSRManagement').then(m => ({ default: m.TLDSRManagement })));
+const TLStockManagement = lazy(() => import('@/components/views/TLStockManagement').then(m => ({ default: m.TLStockManagement })));
+const TLSalesVerification = lazy(() => import('@/components/views/TLSalesVerification').then(m => ({ default: m.TLSalesVerification })));
+const TLReports = lazy(() => import('@/components/views/TLReports').then(m => ({ default: m.TLReports })));
+const Profile = lazy(() => import('@/components/views/Profile').then(m => ({ default: m.GeneralDashboard })));
+const ManagerDashboard = lazy(() => import('@/components/views/ManagerDashboard'));
+const ManagerStock = lazy(() => import('@/components/views/ManagerStock'));
+const ManagerSalesTeam = lazy(() => import('@/components/views/ManagerSalesTeam'));
+const DEDashboard = lazy(() => import('@/components/views/DEDashboard').then(m => ({ default: m.DEDashboard })));
+const DEAgents = lazy(() => import('@/components/views/DEAgents').then(m => ({ default: m.DEAgents })));
+const DEAgentSales = lazy(() => import('@/components/views/DEAgentSales').then(m => ({ default: m.DEAgentSales })));
+const DESalesReport = lazy(() => import('@/components/views/DESalesReport').then(m => ({ default: m.DESalesReport })));
+
+// Loading fallback component
+const ComponentLoader = () => (
+  <div className="flex items-center justify-center h-full min-h-[400px]">
+    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+  </div>
+);
 
 const Index = () => {
   const { user, userRole, profile, loading } = useAuth();
@@ -191,7 +200,9 @@ const Index = () => {
           onMobileMenuToggle={() => setIsMobileMenuOpen(true)}
         />
         <main className="flex-1 overflow-y-auto p-4 lg:p-6">
-          {renderContent()}
+          <Suspense fallback={<ComponentLoader />}>
+            {renderContent()}
+          </Suspense>
         </main>
       </div>
     </div>

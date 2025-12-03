@@ -192,8 +192,8 @@ export function DSRDashboard({ onNavigate }: DSRDashboardProps) {
         <p className="text-muted-foreground">Here's your performance overview</p>
       </div>
 
-      {/* Earnings Dashboard */}
-      <DSREarningsDashboard />
+      {/* Earnings Dashboard - Only show if dsrId is loaded */}
+      {dsrId && <DSREarningsDashboard dsrId={dsrId} />}
 
       {/* Metrics */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
