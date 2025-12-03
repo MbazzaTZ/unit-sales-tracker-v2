@@ -77,6 +77,9 @@ export function AdminStockManagement() {
   const [isProcessingCsv, setIsProcessingCsv] = useState(false);
   const [uploadStats, setUploadStats] = useState({ total: 0, success: 0, failed: 0 });
   const [isUploading, setIsUploading] = useState(false);
+  const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [editingItem, setEditingItem] = useState<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   const { toast } = useToast();
@@ -279,6 +282,47 @@ export function AdminStockManagement() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['stock_batches'] });
+    }
+  });
+
+  // Update stock mutation
+  const updateStockMutation = useMutation({
+    mutationFn: async ({ id, updates }: { id: string; updates: any }) => {
+      const { error } = await supabase
+        .from('stock')
+        .update(updates)
+        .eq('id', id);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['stock'] });
+      toast({ title: 'Stock updated successfully' });
+      setIsEditOpen(false);
+      setEditingItem(null);
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Error updating stock', description: error.message, variant: 'destructive' });
+    }
+  });
+
+  // Delete stock mutation
+  const deleteStockMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const { error } = await supabase
+        .from('stock')
+        .delete()
+        .in('id', ids);
+      
+      if (error) throw error;
+    },
+    onSuccess: (_, ids) => {
+      queryClient.invalidateQueries({ queryKey: ['stock'] });
+      toast({ title: `${ids.length} item(s) deleted successfully` });
+      setSelectedItems(new Set());
+    },
+    onError: (error: Error) => {
+      toast({ title: 'Error deleting stock', description: error.message, variant: 'destructive' });
     }
   });
 
@@ -540,6 +584,60 @@ export function AdminStockManagement() {
       await bulkAddStockMutation.mutateAsync({ items: csvData, batchId: batch.id });
     } catch (error) {
       // Error handling is done in mutations
+    }
+  };
+
+  const handleSelectAll = () => {
+    if (selectedItems.size === stock.length) {
+      setSelectedItems(new Set());
+    } else {
+      setSelectedItems(new Set(stock.map((item: any) => item.id)));
+    }
+  };
+
+  const handleSelectItem = (id: string) => {
+    const newSelected = new Set(selectedItems);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedItems(newSelected);
+  };
+
+  const handleEdit = (item: any) => {
+    setEditingItem(item);
+    setManualStockId(item.stock_id || '');
+    setSerialNumber(item.serial_number || '');
+    setSmartcardNumber(item.smartcard_number || '');
+    setManualType(item.type || '');
+    setSelectedRegion(item.region_id || '');
+    setIsEditOpen(true);
+  };
+
+  const handleEditSubmit = () => {
+    if (!editingItem) return;
+    
+    const updates: any = {
+      type: manualType,
+    };
+    
+    if (manualStockId) updates.stock_id = manualStockId;
+    if (serialNumber) updates.serial_number = serialNumber;
+    if (smartcardNumber) updates.smartcard_number = smartcardNumber;
+    if (selectedRegion && selectedRegion !== 'none') updates.region_id = selectedRegion;
+    
+    updateStockMutation.mutate({ id: editingItem.id, updates });
+  };
+
+  const handleDeleteSelected = () => {
+    if (selectedItems.size === 0) {
+      toast({ title: 'No items selected', variant: 'destructive' });
+      return;
+    }
+    
+    if (confirm(`Delete ${selectedItems.size} item(s)?`)) {
+      deleteStockMutation.mutate(Array.from(selectedItems));
     }
   };
 
@@ -832,8 +930,27 @@ export function AdminStockManagement() {
       {/* Stock Table */}
       <div className="glass rounded-xl border border-border/50">
         <div className="p-5 border-b border-border/50">
-          <h2 className="text-lg font-semibold text-foreground">All Stock Items</h2>
-          <p className="text-sm text-muted-foreground">Total: {totalStock} items</p>
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <h2 className="text-lg font-semibold text-foreground">All Stock Items</h2>
+              <p className="text-sm text-muted-foreground">Total: {totalStock} items • Selected: {selectedItems.size}</p>
+            </div>
+            {selectedItems.size > 0 && (
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleDeleteSelected}
+                disabled={deleteStockMutation.isPending}
+              >
+                {deleteStockMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <X className="h-4 w-4 mr-2" />
+                )}
+                Delete Selected
+              </Button>
+            )}
+          </div>
         </div>
         
         {isLoading ? (
@@ -852,6 +969,14 @@ export function AdminStockManagement() {
             <Table>
               <TableHeader>
                 <TableRow className="border-border/50 hover:bg-transparent">
+                  <TableHead className="w-12">
+                    <input
+                      type="checkbox"
+                      checked={stock.length > 0 && selectedItems.size === stock.length}
+                      onChange={handleSelectAll}
+                      className="cursor-pointer"
+                    />
+                  </TableHead>
                   <TableHead className="text-muted-foreground">Stock ID</TableHead>
                   <TableHead className="text-muted-foreground">Serial Number</TableHead>
                   <TableHead className="text-muted-foreground">Smartcard</TableHead>
@@ -861,11 +986,20 @@ export function AdminStockManagement() {
                   <TableHead className="text-muted-foreground">Assigned To</TableHead>
                   <TableHead className="text-muted-foreground">Status</TableHead>
                   <TableHead className="text-muted-foreground">Created</TableHead>
+                  <TableHead className="text-muted-foreground text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {stock.map((item: any) => (
                   <TableRow key={item.id} className="border-border/50 hover:bg-secondary/30">
+                    <TableCell>
+                      <input
+                        type="checkbox"
+                        checked={selectedItems.has(item.id)}
+                        onChange={() => handleSelectItem(item.id)}
+                        className="cursor-pointer"
+                      />
+                    </TableCell>
                     <TableCell className="font-mono font-medium text-foreground">
                       {item.stock_id || 'N/A'}
                     </TableCell>
@@ -911,6 +1045,15 @@ export function AdminStockManagement() {
                     <TableCell className="text-muted-foreground text-sm">
                       {item.created_at ? new Date(item.created_at).toLocaleDateString() : 'N/A'}
                     </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleEdit(item)}
+                      >
+                        Edit
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -918,6 +1061,89 @@ export function AdminStockManagement() {
           </div>
         )}
       </div>
+
+      {/* Edit Stock Dialog */}
+      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+        <DialogContent className="glass border-border/50 max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Edit Stock Item</DialogTitle>
+            <DialogDescription>Update stock details</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-4">
+            <div className="space-y-2">
+              <Label>Stock Type <span className="text-destructive">*</span></Label>
+              <Select value={manualType} onValueChange={setManualType}>
+                <SelectTrigger className="bg-secondary/50">
+                  <SelectValue placeholder="Select stock type" />
+                </SelectTrigger>
+                <SelectContent>
+                  {STOCK_TYPES.map(type => (
+                    <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Stock ID</Label>
+              <Input
+                placeholder="Stock ID"
+                value={manualStockId}
+                onChange={(e) => setManualStockId(e.target.value)}
+                className="bg-secondary/50"
+                disabled
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Serial Number</Label>
+                <Input
+                  placeholder="e.g., SN-789012"
+                  value={serialNumber}
+                  onChange={(e) => setSerialNumber(e.target.value)}
+                  className="bg-secondary/50"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Smartcard Number</Label>
+                <Input
+                  placeholder="e.g., SC-123456"
+                  value={smartcardNumber}
+                  onChange={(e) => setSmartcardNumber(e.target.value)}
+                  className="bg-secondary/50"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Region</Label>
+              <Select value={selectedRegion} onValueChange={setSelectedRegion}>
+                <SelectTrigger className="bg-secondary/50">
+                  <SelectValue placeholder="Select Region" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None</SelectItem>
+                  {regions.map((region: any) => (
+                    <SelectItem key={region.id} value={region.id}>
+                      {region.name} ({region.code})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <Button 
+              className="w-full" 
+              onClick={handleEditSubmit}
+              disabled={updateStockMutation.isPending}
+            >
+              {updateStockMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Update Stock
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
