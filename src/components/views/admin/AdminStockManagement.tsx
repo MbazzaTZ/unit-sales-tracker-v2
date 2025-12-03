@@ -60,6 +60,8 @@ export function AdminStockManagement() {
   const [isManualOpen, setIsManualOpen] = useState(false);
   const [isBatchOpen, setIsBatchOpen] = useState(false);
   const [manualStockId, setManualStockId] = useState('');
+  const [serialNumber, setSerialNumber] = useState('');
+  const [smartcardNumber, setSmartcardNumber] = useState('');
   const [manualType, setManualType] = useState('');
   const [selectedTL, setSelectedTL] = useState('');
   const [selectedRegion, setSelectedRegion] = useState('');
@@ -257,7 +259,9 @@ export function AdminStockManagement() {
   const addStockMutation = useMutation({
     mutationFn: async (stockData: { 
       stock_id: string; 
-      type: string; 
+      type: string;
+      serial_number?: string;
+      smartcard_number?: string;
       assigned_to_tl?: string;
       region_id?: string;
       status?: string;
@@ -276,6 +280,8 @@ export function AdminStockManagement() {
       toast({ title: 'Stock added successfully' });
       // Reset form
       setManualStockId('');
+      setSerialNumber('');
+      setSmartcardNumber('');
       setManualType('');
       setSelectedTL('');
       setSelectedRegion('');
@@ -331,6 +337,8 @@ export function AdminStockManagement() {
 
       const stockItems = items.map(item => ({
         stock_id: item.serial_number, // Use serial number as stock_id (unique identifier)
+        serial_number: item.serial_number,
+        smartcard_number: item.smartcard_number && item.smartcard_number.trim() !== '' ? item.smartcard_number : null,
         type: item.type,
         batch_id: batchId,
         region_id: item.region ? regionMap[item.region] : null,
@@ -372,7 +380,9 @@ export function AdminStockManagement() {
       status: 'unassigned' // Default status
     };
 
-    // Add optional fields that exist in stock table
+    // Add optional fields
+    if (serialNumber) stockData.serial_number = serialNumber;
+    if (smartcardNumber) stockData.smartcard_number = smartcardNumber;
     if (selectedTL && selectedTL !== 'none') {
       stockData.assigned_to_tl = selectedTL;
       stockData.status = 'assigned-tl';
@@ -452,7 +462,7 @@ export function AdminStockManagement() {
         if (parsedData.length === 0) {
           toast({ 
             title: 'No valid data found', 
-            description: 'Excel must have: Serial Number/Stock ID (required), Type (optional), Batch Number, Region (optional)',
+            description: 'Excel must have: Serial Number (required), Smartcard Number, Type, Batch Number, Region (all optional)',
             variant: 'destructive' 
           });
           setIsProcessingCsv(false);
@@ -553,15 +563,36 @@ export function AdminStockManagement() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Stock ID / Serial Number <span className="text-destructive">*</span></Label>
+                  <Label>Stock ID <span className="text-destructive">*</span></Label>
                   <Input
-                    placeholder="e.g., SN-789012"
+                    placeholder="e.g., STOCK-001"
                     value={manualStockId}
                     onChange={(e) => setManualStockId(e.target.value)}
                     className="bg-secondary/50"
                     required
                   />
                   <p className="text-xs text-muted-foreground">Unique identifier for this stock item</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Serial Number</Label>
+                    <Input
+                      placeholder="e.g., SN-789012"
+                      value={serialNumber}
+                      onChange={(e) => setSerialNumber(e.target.value)}
+                      className="bg-secondary/50"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Smartcard Number</Label>
+                    <Input
+                      placeholder="e.g., SC-123456"
+                      value={smartcardNumber}
+                      onChange={(e) => setSmartcardNumber(e.target.value)}
+                      className="bg-secondary/50"
+                    />
+                  </div>
                 </div>
 
                 {/* Assignment Fields */}
@@ -676,7 +707,7 @@ export function AdminStockManagement() {
                       <div className="space-y-2">
                         <FileSpreadsheet className="h-8 w-8 mx-auto text-muted-foreground" />
                         <p className="text-muted-foreground">Click to upload Excel/CSV</p>
-                        <p className="text-xs text-muted-foreground">Required: Serial Number/Stock ID • Optional: Type, Region</p>
+                        <p className="text-xs text-muted-foreground">Required: Serial Number • Optional: Smartcard Number, Type, Region</p>
                       </div>
                     )}
                     <input
@@ -694,7 +725,8 @@ export function AdminStockManagement() {
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead className="text-xs">Stock ID</TableHead>
+                          <TableHead className="text-xs">Serial Number</TableHead>
+                          <TableHead className="text-xs">Smartcard</TableHead>
                           <TableHead className="text-xs">Type</TableHead>
                           <TableHead className="text-xs">Region</TableHead>
                         </TableRow>
@@ -703,13 +735,14 @@ export function AdminStockManagement() {
                         {csvData.slice(0, 5).map((item, i) => (
                           <TableRow key={i}>
                             <TableCell className="text-xs font-mono">{item.serial_number}</TableCell>
+                            <TableCell className="text-xs font-mono">{item.smartcard_number || '-'}</TableCell>
                             <TableCell className="text-xs">{item.type}</TableCell>
                             <TableCell className="text-xs">{item.region || '-'}</TableCell>
                           </TableRow>
                         ))}
                         {csvData.length > 5 && (
                           <TableRow>
-                            <TableCell colSpan={3} className="text-xs text-center text-muted-foreground">
+                            <TableCell colSpan={4} className="text-xs text-center text-muted-foreground">
                               ...and {csvData.length - 5} more
                             </TableCell>
                           </TableRow>
