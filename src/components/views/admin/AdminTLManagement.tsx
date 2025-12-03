@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -55,6 +55,11 @@ export function AdminTLManagement() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  // Reset territory when region changes
+  useEffect(() => {
+    setTerritoryId('');
+  }, [regionId]);
+
   // Fetch regions
   const { data: regions = [] } = useQuery({
     queryKey: ['regions'],
@@ -89,12 +94,17 @@ export function AdminTLManagement() {
         .from('team_leaders')
         .select(`
           *,
-          region:regions(name, code),
-          territory:territories(name, code)
+          regions!team_leaders_region_id_fkey(name, code),
+          territories!team_leaders_territory_id_fkey(name, code)
         `)
         .order('created_at', { ascending: false });
       
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching team leaders:', error);
+        throw error;
+      }
+      
+      if (!data || data.length === 0) return [];
       
       // Fetch profiles separately
       const userIds = data.map(tl => tl.user_id);
@@ -105,6 +115,8 @@ export function AdminTLManagement() {
       
       return data.map(tl => ({
         ...tl,
+        region: tl.regions,
+        territory: tl.territories,
         profile: profiles?.find(p => p.id === tl.user_id)
       }));
     }
@@ -124,6 +136,20 @@ export function AdminTLManagement() {
       
       if (authError) throw authError;
       if (!authData.user) throw new Error('Failed to create user');
+      
+      // Wait a bit for profile to be created by trigger
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Ensure profile exists with correct data
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .upsert({
+          id: authData.user.id,
+          full_name: fullName,
+          email: email
+        });
+      
+      if (profileError) console.error('Profile upsert error:', profileError);
       
       // Delete default DSR role
       await supabase
@@ -245,6 +271,20 @@ export function AdminTLManagement() {
     setDeletingTL(tl);
   };
 
+  const handleDialogChange = (open: boolean) => {
+    setIsOpen(open);
+    if (!open) {
+      // Reset form when closing
+      setEmail('');
+      setPassword('');
+      setFullName('');
+      setRegionId('');
+      setTerritoryId('');
+      setTarget('');
+      setEditingTL(null);
+    }
+  };
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
@@ -253,7 +293,7 @@ export function AdminTLManagement() {
           <p className="text-muted-foreground">Manage team leaders across regions</p>
         </div>
         
-        <Dialog open={isOpen} onOpenChange={setIsOpen}>
+        <Dialog open={isOpen} onOpenChange={handleDialogChange}>
           <DialogTrigger asChild>
             <Button className="gap-2">
               <UserPlus className="h-4 w-4" />
