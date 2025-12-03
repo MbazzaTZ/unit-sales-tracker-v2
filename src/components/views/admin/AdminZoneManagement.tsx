@@ -49,6 +49,7 @@ interface Zone {
   tl_count?: number;
   team_count?: number;
   dsr_count?: number;
+  territory_count?: number;
 }
 
 /* ---------------------------------------------
@@ -123,11 +124,18 @@ export function AdminZoneManagement() {
             .select('*', { count: 'exact', head: true })
             .in('tl_id', tlIds.length > 0 ? tlIds : ['']);
 
+          // Count territories in these regions
+          const { count: territoryCount } = await supabase
+            .from('territories')
+            .select('*', { count: 'exact', head: true })
+            .in('region_id', regionIds.length > 0 ? regionIds : ['']);
+
           return {
             ...zone,
             tl_count: tlCount || 0,
             team_count: teamCount || 0,
             dsr_count: dsrCount || 0,
+            territory_count: territoryCount || 0,
           };
         })
       );
@@ -470,7 +478,7 @@ export function AdminZoneManagement() {
       </div>
 
       {/* STATS CARDS */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <Card>
           <CardHeader>
             <CardTitle>Total Zones</CardTitle>
@@ -478,6 +486,17 @@ export function AdminZoneManagement() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{zones.length}</div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Total Territories</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {zones.reduce((sum, z) => sum + (z.territory_count || 0), 0)}
+            </div>
           </CardContent>
         </Card>
 
@@ -532,6 +551,7 @@ export function AdminZoneManagement() {
                 <TableHead>Code</TableHead>
                 <TableHead>Zonal Manager</TableHead>
                 <TableHead>Territories</TableHead>
+                <TableHead className="text-center">Territory Count</TableHead>
                 <TableHead className="text-center">TLs</TableHead>
                 <TableHead className="text-center">Teams</TableHead>
                 <TableHead className="text-center">DSRs</TableHead>
@@ -544,7 +564,7 @@ export function AdminZoneManagement() {
               {zones.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={9}
+                    colSpan={10}
                     className="text-center text-muted-foreground py-8"
                   >
                     No zones available.
@@ -581,6 +601,9 @@ export function AdminZoneManagement() {
                       )}
                     </TableCell>
 
+                    <TableCell className="text-center">
+                      <Badge variant="secondary">{zone.territory_count || 0}</Badge>
+                    </TableCell>
                     <TableCell className="text-center">{zone.tl_count}</TableCell>
                     <TableCell className="text-center">{zone.team_count}</TableCell>
                     <TableCell className="text-center">{zone.dsr_count}</TableCell>
