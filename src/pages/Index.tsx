@@ -17,7 +17,9 @@ const DSRMySales = lazy(() => import('@/components/views/dsr/DSRMySales').then(m
 const DSRCommission = lazy(() => import('@/components/views/dsr/DSRCommission').then(m => ({ default: m.DSRCommission })));
 const AdminStockManagement = lazy(() => import('@/components/views/admin/AdminStockManagement').then(m => ({ default: m.AdminStockManagement })));
 const AdminTLManagement = lazy(() => import('@/components/views/admin/AdminTLManagement').then(m => ({ default: m.AdminTLManagement })));
-const AdminManagerManagement = lazy(() => import('@/components/views/admin/AdminManagerManagement').then(m => ({ default: m.AdminManagerManagement })));
+const AdminRSMManagement = lazy(() => import('@/components/views/admin/AdminManagerManagement').then(m => ({ default: m.AdminManagerManagement })));
+const AdminTSMManagement = lazy(() => import('@/components/views/admin/AdminTSMManagement'));
+
 const AdminAssignStock = lazy(() => import('@/components/views/admin/AdminAssignStock').then(m => ({ default: m.AdminAssignStock })));
 const AdminApprovals = lazy(() => import('@/components/views/admin/AdminApprovals').then(m => ({ default: m.AdminApprovals })));
 const AdminRegionManagement = lazy(() => import('@/components/views/admin/AdminZoneManagement').then(m => ({ default: m.AdminZoneManagement })));
@@ -93,8 +95,10 @@ const Index = () => {
           return <AdminAssignStock />;
         case 'tls':
           return <AdminTLManagement />;
-        case 'managers':
-          return <AdminManagerManagement />;
+        case 'rsms':
+          return <AdminRSMManagement />;
+        case 'tsms':
+          return <AdminTSMManagement />;
         case 'des':
           return <AdminDEManagement />;
         case 'approvals':
