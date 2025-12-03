@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -18,9 +17,12 @@ interface DashboardMetrics {
   paidStock: number;
 }
 
-export default function ManagerDashboard() {
+interface ManagerDashboardProps {
+  onNavigate?: (tab: string) => void;
+}
+
+export default function ManagerDashboard({ onNavigate }: ManagerDashboardProps = {}) {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState<DashboardMetrics>({
     totalSales: 0,
@@ -377,42 +379,29 @@ export default function ManagerDashboard() {
       </Card>
 
       {/* Quick Actions */}
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2">
         <Card 
           className="cursor-pointer hover:bg-accent transition-colors"
-          onClick={() => navigate('/manager/stock')}
+          onClick={() => onNavigate?.('stock')}
         >
           <CardContent className="pt-6">
             <div className="text-center">
               <Package className="w-12 h-12 mx-auto mb-2 text-primary" />
               <h3 className="font-semibold">Stock Management</h3>
-              <p className="text-sm text-muted-foreground">View inventory status</p>
+              <p className="text-sm text-muted-foreground">View inventory status and unpaid stock</p>
             </div>
           </CardContent>
         </Card>
 
         <Card 
           className="cursor-pointer hover:bg-accent transition-colors"
-          onClick={() => navigate('/manager/sales-team')}
+          onClick={() => onNavigate?.('sales-team')}
         >
           <CardContent className="pt-6">
             <div className="text-center">
               <Users className="w-12 h-12 mx-auto mb-2 text-primary" />
-              <h3 className="font-semibold">Sales Teams</h3>
-              <p className="text-sm text-muted-foreground">View team performance</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card 
-          className="cursor-pointer hover:bg-accent transition-colors"
-          onClick={() => navigate('/manager/commissions')}
-        >
-          <CardContent className="pt-6">
-            <div className="text-center">
-              <DollarSign className="w-12 h-12 mx-auto mb-2 text-primary" />
-              <h3 className="font-semibold">Commission Reports</h3>
-              <p className="text-sm text-muted-foreground">View DSR commissions</p>
+              <h3 className="font-semibold">Sales Team Performance</h3>
+              <p className="text-sm text-muted-foreground">View Teams, TLs, TSMs, and DSRs</p>
             </div>
           </CardContent>
         </Card>

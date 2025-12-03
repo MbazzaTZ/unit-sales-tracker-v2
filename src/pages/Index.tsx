@@ -153,7 +153,7 @@ const Index = () => {
     if (userRole === 'manager') {
       switch (activeTab) {
         case 'dashboard':
-          return <ManagerDashboard />;
+          return <ManagerDashboard onNavigate={setActiveTab} />;
         case 'stock':
           return <ManagerStock />;
         case 'sales-team':
@@ -161,7 +161,7 @@ const Index = () => {
         case 'profile':
           return <Profile />;
         default:
-          return <ManagerDashboard />;
+          return <ManagerDashboard onNavigate={setActiveTab} />;
       }
     }
 
