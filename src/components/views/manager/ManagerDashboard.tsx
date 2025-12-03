@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, DollarSign, Users, Package, TrendingUp } from 'lucide-react';
+import { Loader2, DollarSign, Users, Package, TrendingUp, AlertCircle } from 'lucide-react';
 import { MetricCard } from '@/components/dashboard/MetricCard';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Line, ComposedChart } from 'recharts';
 
 interface DashboardMetrics {
   totalSales: number;
@@ -12,6 +13,8 @@ interface DashboardMetrics {
   monthlySales: number;
   monthlyTarget: number;
   salesGap: number;
+  unpaidStock: number;
+  paidStock: number;
 }
 
 export default function ManagerDashboard() {
@@ -23,9 +26,12 @@ export default function ManagerDashboard() {
     stockInHand: 0,
     monthlySales: 0,
     monthlyTarget: 500,
-    salesGap: 0
+    salesGap: 0,
+    unpaidStock: 0,
+    paidStock: 0
   });
   const [monthToDateData, setMonthToDateData] = useState<{ date: string; actual: number; target: number; gap: number }[]>([]);
+  const [unpaidStockData, setUnpaidStockData] = useState<{ name: string; paid: number; unpaid: number }[]>([]);
 
   useEffect(() => {
     fetchDashboardData();
@@ -115,16 +121,43 @@ export default function ManagerDashboard() {
 
       const salesGap = monthlySales.length - Math.round(dailyTarget * currentDay);
 
+      // Get stock payment status
+      const { data: allStock, error: allStockError } = await supabase
+        .from('stock')
+        .select('status');
+
+      if (allStockError) throw allStockError;
+
+      const paidStock = allStock?.filter(s => s.status === 'sold-paid').length || 0;
+      const unpaidStock = allStock?.filter(s => s.status === 'sold-unpaid').length || 0;
+
+      // Prepare unpaid stock chart data
+      const unpaidChartData = [
+        {
+          name: 'Paid Stock',
+          paid: paidStock,
+          unpaid: 0
+        },
+        {
+          name: 'Unpaid Stock',
+          paid: 0,
+          unpaid: unpaidStock
+        }
+      ];
+
       setMetrics({
         totalSales: sales?.length || 0,
         activeDSRs: dsrCount || 0,
         stockInHand,
         monthlySales: monthlySales.length,
         monthlyTarget,
-        salesGap
+        salesGap,
+        unpaidStock,
+        paidStock
       });
 
       setMonthToDateData(monthToDateTrend);
+      setUnpaidStockData(unpaidChartData);
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
     } finally {
@@ -206,7 +239,102 @@ export default function ManagerDashboard() {
         </Card>
       </div>
 
-      {/* Target vs Actual Trend (Month to Date) */}
+      {/* Visual Charts Row */}
+      <div className="grid gap-4 md:grid-cols-2">
+        {/* Sales vs Target Chart */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Sales vs Target (Visual)</CardTitle>
+            <p className="text-sm text-muted-foreground">Month-to-date performance comparison</p>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <ComposedChart data={monthToDateData.slice(-7)}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(217, 33%, 17%)" />
+                <XAxis 
+                  dataKey="date" 
+                  stroke="hsl(215, 20%, 55%)"
+                  fontSize={12}
+                />
+                <YAxis 
+                  stroke="hsl(215, 20%, 55%)"
+                  fontSize={12}
+                />
+                <Tooltip 
+                  contentStyle={{
+                    backgroundColor: 'hsl(222, 47%, 8%)',
+                    border: '1px solid hsl(217, 33%, 17%)',
+                    borderRadius: '8px',
+                    color: 'hsl(210, 40%, 98%)'
+                  }}
+                />
+                <Legend />
+                <Bar dataKey="target" fill="hsl(217, 91%, 60%)" name="Target" />
+                <Bar dataKey="actual" fill="hsl(142, 76%, 46%)" name="Actual" />
+                <Line 
+                  type="monotone" 
+                  dataKey="gap" 
+                  stroke="hsl(24, 95%, 53%)" 
+                  name="Gap"
+                  strokeWidth={2}
+                />
+              </ComposedChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+
+        {/* Unpaid Stock Chart */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-red-500" />
+              Stock Payment Status
+            </CardTitle>
+            <p className="text-sm text-muted-foreground">Paid vs Unpaid stock analysis</p>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="p-4 border rounded-lg bg-green-50 dark:bg-green-950">
+                  <div className="text-sm text-muted-foreground">Paid Stock</div>
+                  <div className="text-2xl font-bold text-green-600">{metrics.paidStock}</div>
+                </div>
+                <div className="p-4 border rounded-lg bg-red-50 dark:bg-red-950">
+                  <div className="text-sm text-muted-foreground">Unpaid Stock</div>
+                  <div className="text-2xl font-bold text-red-600">{metrics.unpaidStock}</div>
+                </div>
+              </div>
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={unpaidStockData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(217, 33%, 17%)" />
+                  <XAxis 
+                    dataKey="name" 
+                    stroke="hsl(215, 20%, 55%)"
+                    fontSize={12}
+                  />
+                  <YAxis 
+                    stroke="hsl(215, 20%, 55%)"
+                    fontSize={12}
+                  />
+                  <Tooltip 
+                    contentStyle={{
+                      backgroundColor: 'hsl(222, 47%, 8%)',
+                      border: '1px solid hsl(217, 33%, 17%)',
+                      borderRadius: '8px',
+                      color: 'hsl(210, 40%, 98%)'
+                    }}
+                  />
+                  <Legend />
+                  <Bar dataKey="paid" fill="hsl(142, 76%, 46%)" name="Paid" />
+                  <Bar dataKey="unpaid" fill="hsl(0, 84%, 60%)" name="Unpaid" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Target vs Actual Trend (Month to Date) - Detailed Table */}
       <Card>
         <CardHeader>
           <CardTitle>Target vs Actual Sales Trend (Month-to-Date)</CardTitle>
