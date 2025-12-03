@@ -61,12 +61,8 @@ export function AdminStockManagement() {
   const [isBatchOpen, setIsBatchOpen] = useState(false);
   const [manualStockId, setManualStockId] = useState('');
   const [manualType, setManualType] = useState('');
-  const [smartcardNumber, setSmartcardNumber] = useState('');
-  const [serialNumber, setSerialNumber] = useState('');
   const [selectedTL, setSelectedTL] = useState('');
   const [selectedRegion, setSelectedRegion] = useState('');
-  const [territory, setTerritory] = useState('');
-  const [subTerritory, setSubTerritory] = useState('');
   const [batchNumber, setBatchNumber] = useState('');
   const [csvData, setCsvData] = useState<{ 
     batch_number: string;
@@ -262,16 +258,12 @@ export function AdminStockManagement() {
     mutationFn: async (stockData: { 
       stock_id: string; 
       type: string; 
-      smartcard_number?: string;
-      serial_number?: string;
       assigned_to_tl?: string;
       region_id?: string;
-      territory?: string;
-      sub_territory?: string;
-      batch_id?: string;
       status?: string;
       assigned_by?: string;
       date_assigned?: string;
+      batch_id?: string;
     }) => {
       const { error } = await supabase
         .from('stock')
@@ -285,12 +277,8 @@ export function AdminStockManagement() {
       // Reset form
       setManualStockId('');
       setManualType('');
-      setSmartcardNumber('');
-      setSerialNumber('');
       setSelectedTL('');
       setSelectedRegion('');
-      setTerritory('');
-      setSubTerritory('');
       setIsManualOpen(false);
     },
     onError: (error: Error) => {
@@ -342,19 +330,15 @@ export function AdminStockManagement() {
       }
 
       const stockItems = items.map(item => ({
-        stock_id: item.serial_number, // Use serial number as stock_id
-        serial_number: item.serial_number,
-        smartcard_number: item.smartcard_number && item.smartcard_number.trim() !== '' ? item.smartcard_number : null,
+        stock_id: item.serial_number, // Use serial number as stock_id (unique identifier)
         type: item.type,
         batch_id: batchId,
         region_id: item.region ? regionMap[item.region] : null,
-        territory: item.territory || null,
         status: 'unassigned'
       }));
       
-      // Debug: Log how many items have smartcard numbers
-      const withSmartcards = stockItems.filter(item => item.smartcard_number).length;
-      console.log(`Uploading ${stockItems.length} items, ${withSmartcards} have smartcard numbers`);
+      // Debug: Log upload info
+      console.log(`Uploading ${stockItems.length} items to batch ${batchId}`);
 
       const { error } = await supabase
         .from('stock')
@@ -388,9 +372,7 @@ export function AdminStockManagement() {
       status: 'unassigned' // Default status
     };
 
-    // Add optional fields
-    if (smartcardNumber) stockData.smartcard_number = smartcardNumber;
-    if (serialNumber) stockData.serial_number = serialNumber;
+    // Add optional fields that exist in stock table
     if (selectedTL && selectedTL !== 'none') {
       stockData.assigned_to_tl = selectedTL;
       stockData.status = 'assigned-tl';
@@ -398,8 +380,6 @@ export function AdminStockManagement() {
       stockData.date_assigned = new Date().toISOString();
     }
     if (selectedRegion && selectedRegion !== 'none') stockData.region_id = selectedRegion;
-    if (territory) stockData.territory = territory;
-    if (subTerritory) stockData.sub_territory = subTerritory;
     
     addStockMutation.mutate(stockData);
   };
@@ -472,7 +452,7 @@ export function AdminStockManagement() {
         if (parsedData.length === 0) {
           toast({ 
             title: 'No valid data found', 
-            description: 'Excel must have: Serial Number (required), Batch Number, Smartcard Number, Type, Region/Territory',
+            description: 'Excel must have: Serial Number/Stock ID (required), Type (optional), Batch Number, Region (optional)',
             variant: 'destructive' 
           });
           setIsProcessingCsv(false);
@@ -486,13 +466,12 @@ export function AdminStockManagement() {
         
         setCsvData(parsedData);
         
-        // Debug: Log sample data to verify smartcard parsing
+        // Debug: Log sample data
         console.log('Sample parsed data (first 3 rows):', parsedData.slice(0, 3));
-        const withSmartcard = parsedData.filter(item => item.smartcard_number).length;
         
         toast({ 
           title: `✅ ${parsedData.length} items loaded`,
-          description: `${withSmartcard} with smartcard numbers • From ${file.name}`
+          description: `From ${file.name}`
         });
       } catch (error) {
         console.error('File parsing error:', error);
@@ -573,26 +552,16 @@ export function AdminStockManagement() {
                   </Select>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Smart Card Number</Label>
-                    <Input
-                      placeholder="e.g., SC-123456"
-                      value={smartcardNumber}
-                      onChange={(e) => setSmartcardNumber(e.target.value)}
-                      className="bg-secondary/50"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Serial Number <span className="text-destructive">*</span></Label>
-                    <Input
-                      placeholder="e.g., SN-789012"
-                      value={manualStockId}
-                      onChange={(e) => setManualStockId(e.target.value)}
-                      className="bg-secondary/50"
-                      required
-                    />
-                  </div>
+                <div className="space-y-2">
+                  <Label>Stock ID / Serial Number <span className="text-destructive">*</span></Label>
+                  <Input
+                    placeholder="e.g., SN-789012"
+                    value={manualStockId}
+                    onChange={(e) => setManualStockId(e.target.value)}
+                    className="bg-secondary/50"
+                    required
+                  />
+                  <p className="text-xs text-muted-foreground">Unique identifier for this stock item</p>
                 </div>
 
                 {/* Assignment Fields */}
@@ -628,27 +597,6 @@ export function AdminStockManagement() {
                       ))}
                     </SelectContent>
                   </Select>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Territory (Optional)</Label>
-                    <Input
-                      placeholder="e.g., North"
-                      value={territory}
-                      onChange={(e) => setTerritory(e.target.value)}
-                      className="bg-secondary/50"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Sub Territory (Optional)</Label>
-                    <Input
-                      placeholder="e.g., Downtown"
-                      value={subTerritory}
-                      onChange={(e) => setSubTerritory(e.target.value)}
-                      className="bg-secondary/50"
-                    />
-                  </div>
                 </div>
 
                 <Button 
@@ -728,7 +676,7 @@ export function AdminStockManagement() {
                       <div className="space-y-2">
                         <FileSpreadsheet className="h-8 w-8 mx-auto text-muted-foreground" />
                         <p className="text-muted-foreground">Click to upload Excel/CSV</p>
-                        <p className="text-xs text-muted-foreground">Columns: Batch Number, Serial Number, Smartcard Number, Type, Region/Territory</p>
+                        <p className="text-xs text-muted-foreground">Required: Serial Number/Stock ID • Optional: Type, Region</p>
                       </div>
                     )}
                     <input
@@ -746,9 +694,7 @@ export function AdminStockManagement() {
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead className="text-xs">Batch #</TableHead>
-                          <TableHead className="text-xs">Serial Number</TableHead>
-                          <TableHead className="text-xs">Smartcard</TableHead>
+                          <TableHead className="text-xs">Stock ID</TableHead>
                           <TableHead className="text-xs">Type</TableHead>
                           <TableHead className="text-xs">Region</TableHead>
                         </TableRow>
@@ -756,16 +702,14 @@ export function AdminStockManagement() {
                       <TableBody>
                         {csvData.slice(0, 5).map((item, i) => (
                           <TableRow key={i}>
-                            <TableCell className="text-xs font-mono">{item.batch_number || '-'}</TableCell>
                             <TableCell className="text-xs font-mono">{item.serial_number}</TableCell>
-                            <TableCell className="text-xs font-mono">{item.smartcard_number || '-'}</TableCell>
                             <TableCell className="text-xs">{item.type}</TableCell>
-                            <TableCell className="text-xs">{item.region || item.territory || '-'}</TableCell>
+                            <TableCell className="text-xs">{item.region || '-'}</TableCell>
                           </TableRow>
                         ))}
                         {csvData.length > 5 && (
                           <TableRow>
-                            <TableCell colSpan={5} className="text-xs text-center text-muted-foreground">
+                            <TableCell colSpan={3} className="text-xs text-center text-muted-foreground">
                               ...and {csvData.length - 5} more
                             </TableCell>
                           </TableRow>
